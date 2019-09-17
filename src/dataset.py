@@ -8,7 +8,7 @@ from utils import rle2mask
 
 
 class SteelDataset(Dataset):
-	def __init__(self, fpaths ,
+	def __init__(self, fpaths ,args,
 					 mask_df  = None,
 					 height   = 256,
 					 width	= 1600,
@@ -22,6 +22,7 @@ class SteelDataset(Dataset):
 		self.height, self.width, self.channel = height, width, channel
 		# augmentations
 		self.augment = augment
+		self.args = args
 	
 	
 	def __getitem__(self, idx):
@@ -45,13 +46,28 @@ class SteelDataset(Dataset):
 		# do simple normalization
 		else:
 			image, mask = image/255, mask/255
-		return image.astype(np.float32), mask.astype(np.float32)
+		
+		# do regression task
+		if self.args.output == 1:
+			area = np.array([self.stat_mask(mask[:,:,j]) for j in range(self.category)]).astype(np.float32) 
+			return image.astype(np.float32), mask.astype(np.float32), area
+		# do classification task
+		elif self.args.output == 2:
+			area = np.array([self.stat_mask(mask[:,:,j])>0 for j in range(self.category)]).astype(np.float32)
+			return image.astype(np.float32), mask.astype(np.float32), area
+		# vanilla version (0,3)
+		else: 	
+			return image.astype(np.float32), mask.astype(np.float32)
 	
 	
 	def __len__(self):
 		return len(self.fpaths)
+
 		
-		
+	def stat_mask(self, mask):
+		return np.sum(mask)/self.height/self.width 
+	
+
 	def stat_images(self, rows = float('inf')):
 		'generate a file storing all inforamtion'
 		# record the ratio
@@ -60,11 +76,14 @@ class SteelDataset(Dataset):
 		for i in tqdm(range(min(rows, len(self.fpaths)))):
 			fpath = self.fpaths[i]
 			fname = fpath.split('/')[-1]
-			image, mask = self.__getitem__(i)
+			if self.args.output == 0:
+				image, mask = self.__getitem__(i)
+			else:
+				image, mask, _ = self.__getitem__(i)
 			dicStat['ImageId'].append(fname)
 			dicStat['mean'].append(np.mean(image))
 			dicStat['std'].append(np.std(image))
 			for j in range(self.category):
-				dicStat['Class '+str(j+1)].append(np.sum(mask[:,:,j])/self.height/self.width)
+				dicStat['Class '+str(j+1)].append(self.stat_mask(mask[:,:,j]))
 		self.stat_df = pd.DataFrame(dicStat)
 		return self.stat_df

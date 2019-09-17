@@ -1,7 +1,7 @@
-# check the data
 import glob
 import os
 import cv2
+import argparse
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -11,6 +11,8 @@ from tqdm import tqdm
 from albumentations import (Compose, Flip, HorizontalFlip, Normalize, 
 	RandomBrightness, RandomContrast, RandomGamma, OneOf, ToFloat, 
 	RandomSizedCrop, ShiftScaleRotate)
+import copy
+from bayes_opt import BayesianOptimization
 
 import torch
 import torchvision
@@ -24,75 +26,64 @@ from dataset import SteelDataset
 from unet import Unet
 from metric import dice_metric
 from utils import mask2rle, rle2mask, plot_mask, analyze_labels, seed_everything, print2file
+from loss import criterion_wbce_dice, criterion_wmse, criterion_wbce
+from evaluate import Evaluate
+
+def evaluate_batch(data, outputs, args, threshold = 0.5):
+	if args.output == 0:
+		masks   = data[1].detach().cpu().numpy()
+		pred_masks  = (torch.sigmoid(outputs).detach().cpu().numpy() > threshold).astype(int)
+		# print(masks.shape, pred_masks.shape)
+		return dice_metric(masks, pred_masks), 0.0
+	elif args.output == 1:
+		masks   = data[1].detach().cpu().numpy()
+		labels  = data[2].detach().cpu().numpy()
+		pred_masks  = (torch.sigmoid(outputs[0]).detach().cpu().numpy() > threshold).astype(int)
+		pred_labels = outputs[1].detach().cpu().numpy()
+		return dice_metric(masks, pred_masks), np.sum(np.sqrt((pred_labels-labels)**2))
+	elif args.output == 2:  # classification
+		masks   = data[1].detach().cpu().numpy()
+		labels  = data[2].detach().cpu().numpy()
+		pred_masks  = (torch.sigmoid(outputs[0]).detach().cpu().numpy() > threshold).astype(int)
+		pred_labels = (torch.sigmoid(outputs[1]).detach().cpu().numpy() > threshold).astype(int)
+		return dice_metric(masks, pred_masks), np.sum((pred_labels == labels).astype(int)) 
 
 
-def evaluate_batch(labels, outputs, threshold = 0.5):
-	labels  = labels.detach().cpu().numpy()
-	outputs = (torch.sigmoid(outputs).detach().cpu().numpy() > threshold).astype(int)
-	return dice_metric(labels, outputs)
-
-
-def evaluate_loader(net, device, criterion, dataloader):
-	loss, dice = 0, 0
+def evaluate_loader(net, device, criterion, dataloader, args):
+	loss, dice, other = 0.0, 0.0, 0.0
 	with torch.no_grad():
 		for data in dataloader:
-			images, labels = data[0].to(device), data[1].to(device)
+			images, masks = data[0].to(device), data[1].to(device)
 			images = images.permute(0, 3, 1, 2)
-			labels = labels.permute(0, 3, 1, 2)
+			masks = masks.permute(0, 3, 1, 2)
 			outputs = net(images)
-			loss += criterion(outputs, labels).item()			   
-			dice += evaluate_batch(labels, outputs)
-	return dice, loss
+
+			if criterion[1] is not None:
+				loss += 0.2*criterion[1](outputs[1], data[2].to(device)).item()
+				loss += criterion[0](outputs[0], masks).item()
+			else:
+				loss += criterion[0](outputs, masks).item()
+						   
+			res = evaluate_batch(data, outputs, args)
+			dice, other = dice+res[0], other + res[1]
+	return loss, dice, other
 
 
-def evaluate_loader_post(net, device, dataloader, args, bplot = True):
-	net.eval()
-	dicPred = {'Class '+str(classid+1):[] for classid in range(4)}
-	dice, preds = 0.0, []
-	iplot = 0
-	fig, axs = plt.subplots(args.batch, 2, figsize=(16,16))
+def train_net(net, criterion, optimizer, device, args, LOG_FILE):
+	# output regression information
+	history = {'Train_loss':[], 'Train_dice':[], 'Train_other':[],  'Valid_loss':[], 'Valid_dice':[], 'Valid_other':[]}	
 
-	with torch.no_grad():
-		for data in tqdm(dataloader):
-			images, labels = data[0], data[1]
-			for image_raw, label_raw in zip(images, labels):
-				# flip and predict
-				output_merge = predict_flip(image_raw, net, device)
-				# append the result
-				if args.bayes_opt:
-					preds.append(output_merge)
-				# using simple threshold and output the result
-				output_thres = post_process(output_merge)
-				# record the predicted labels
-				for j in range(4):
-					dicPred['Class {:d}'.format(j+1)].append(output_thres[:,:,j].sum()/args.height/args.width)
-				
-				dice += dice_metric(label_raw.detach().numpy(), output_thres)
-				# plot
-				if iplot < args.batch:
-					ax = axs[iplot, 0]
-					plot_mask(image_raw.detach().numpy(), output_thres, ax)
-					ax.axis('off')
-
-					ax = axs[iplot, 1]
-					plot_mask(image_raw.detach().numpy(), label_raw.detach().numpy(), ax)
-					ax.axis('off')
-					iplot += 1
-			# save some memory
-			if len(preds) > 480:
-				break
-	plt.savefig('../output/evaluate_image.png')
-	return dice, dicPred
-
-
-def train_net(net, criterion, optimizer, device, args):
-	# output information
-	history = {'Train_loss':[], 'Train_dice':[], 'Valid_loss':[], 'Valid_dice':[]}
+	# scheduler
+	if args.sch == 1:
+		scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones = [args.epoch//2, args.epoch*3//4], gamma = 0.5)
 	
+	# criterion
+	criterion_seg, criterion_other = criterion[0], criterion[1]
+
 	# main iteration
 	for epoch in range(args.epoch):  # loop over the dataset multiple times
 		net.train()
-		running_loss, running_dice = 0.0, 0.0
+		running_loss, running_dice, running_other = 0.0, 0.0, 0.0
 		tk0 = tqdm(enumerate(trainloader), total = len(trainloader), leave = False)
 
 		# zero the gradient
@@ -100,121 +91,123 @@ def train_net(net, criterion, optimizer, device, args):
 		# iterate over all samples
 		for i, data in tk0:
 			# get the inputs; data is a list of [inputs, labels]
-			images, labels = data[0].to(device), data[1].to(device)
+			images, masks = data[0].to(device), data[1].to(device)
+			if args.output == 1 or args.output == 2:
+				labels = data[2].to(device)
 			images = images.permute(0, 3, 1, 2)
-			labels = labels.permute(0, 3, 1, 2)
+			masks  = masks.permute(0, 3, 1, 2)
 
 			# forward + backward + optimize
 			outputs = net(images)
 			# accumulate the gradient
 			if not args.accumulate:
-				loss = criterion(outputs, labels)
+				# different ways of handling the outputs
+				if args.output == 0:
+					loss = criterion_seg(outputs, masks)
+				elif args.output == 1 or args.output == 2:
+					loss = criterion_seg(outputs[0], masks) + 0.2 * criterion_other(outputs[1], labels)
 				loss.backward()
 				optimizer.step()
 				optimizer.zero_grad()
 				batch_loss = loss.item()
 			else:
 				acc_step = 64//args.batch
-				loss = criterion(outputs, labels)/acc_step
+				# different ways of handling the outputs
+				if args.output == 0:
+					loss = criterion_seg(outputs, masks)/acc_step
+				elif args.output == 1 or args.output == 2:
+					loss = (criterion_seg(outputs[0], masks) + 0.2 * criterion_other(outputs[1], labels))/acc_step 
 				loss.backward()
 				if (i+1)%acc_step == 0:
 					optimizer.step()
 					optimizer.zero_grad()
-				batch_loss = loss.item()*acc_step
+				batch_loss = loss.item() * acc_step
 
 			# print statistics
-			batch_dice = evaluate_batch(labels, outputs)
+			batch_dice, batch_other  = evaluate_batch(data, outputs, args)
 			running_loss += batch_loss
 			running_dice += batch_dice
-			tk0.set_postfix(info = 'Loss {:.3f}, Dice {:.3f}'.format(batch_loss, batch_dice))
+			running_other += batch_other
+			tk0.set_postfix(info = 'Loss {:.3f}, Dice {:.3f}, Other {:.3f}'.format(batch_loss, batch_dice, batch_other))
+		
+		# stochastic weight averaging
+		if args.swa > 0 and epoch >= args.epoch-args.swa:
+			epoch_tmp = args.epoch-args.swa
+			if epoch == epoch_tmp:
+				net_swa = copy.deepcopy(net.state_dict())
+			else:
+				for key, val in net_swa.items():
+					net_swa[key] = ((epoch-epoch_tmp)*val+net.state_dict()[key])/(epoch-epoch_tmp+1)   
 
 		# after every epoch, print the statistics
 		net.eval()
-		val_dice, val_loss = evaluate_loader(net, device, criterion, validloader)
+		val_loss, val_dice, val_other = evaluate_loader(net, device, criterion, validloader, args)
 
 		# update the learning rate
-		# scheduler.step()
+		if args.sch > 0:
+			scheduler.step()
 
 		# update the history and output message
-		history['Train_loss'].append(running_loss/len(trainloader))
-		history['Valid_loss'].append(val_loss / len(validloader))
-		history['Train_dice'].append(running_dice / len(TRAIN_FILES) / 4) # four categories
-		history['Valid_dice'].append(val_dice / len(VALID_FILES) / 4)	 # four categories
-		print('Epoch {:d} '.format(epoch)+' '.join(key+':{:.3f}'.format(val[-1]) for key,val in history.items()))
-
-	return history
-
-
-def post_process(pred, thres_seg = 0.5, size_seg = 100):
-	# TTA: thresholding
-	assert(pred.shape[2] == 4)
-	for j in range(4):
-		pred[:,:,j] = pred[:,:,j] > thres_seg   
-		# TTA: combining classification and size thresholding
-		nsize = pred[:,:,j].sum()
-		if nsize < size_seg:
-			pred[:,:,j] *= 0  
-	return pred
-
-
-def predict_flip(image_raw, net, device):
-	output_merge = np.zeros((args.height, args.width, 4))
-	for i in range(4):
-		lr, ud = divmod(i, 2)
-		image = image_raw.detach().numpy()
-		if lr == 1: # flip left to right
-			image = np.fliplr(image)
-		if ud == 1: # flip up to down
-			image = np.flipud(image)
-
-		image_flip = torch.from_numpy(image.copy()).unsqueeze(0).to(device)
-		# obtain the prediction
-		outputs = torch.sigmoid(net(image_flip.permute(0, 3, 1, 2))).permute(0, 2, 3, 1).detach().cpu().numpy()[0]
-
-		# flip the predicted results
-		if lr == 1: # flip the prediction from right to left
-			outputs = np.fliplr(outputs)
-		if ud == 1:
-			outputs = np.flipud(outputs)
-		# merge the result
-		output_merge += outputs/4
-	return output_merge
-
+		history['Train_loss'].append(running_loss   / len(trainloader))
+		history['Valid_loss'].append(val_loss       / len(validloader))
+		history['Train_dice'].append(running_dice   / len(TRAIN_FILES) / args.category) # four categories
+		history['Valid_dice'].append(val_dice       / len(VALID_FILES) / args.category) 
+		history['Train_other'].append(running_other / len(TRAIN_FILES) / args.category)
+		history['Valid_other'].append(val_other     / len(VALID_FILES) / args.category) 
+		sout = '\nEpoch {:d} :'.format(epoch)+' '.join(key+':{:.3f}'.format(val[-1]) for key,val in history.items())
+		print2file(sout, LOG_FILE)
+		print(sout)
+	if args.swa > 0:
+		return net_swa, history	
+	else:
+		return net.state_dict(), history
 
 
 if __name__ == '__main__':
 	# argsparse
-	class args:
-		test_run  = True	  # do a test run
-		eda	   = True	  # run eda from start
-		epoch	 = 3		 # the number of epochs
-		augment   = False	 # whether using augmentations 
-		normalize = False	 # whether do normalization on the data
-		height	= 256
-		width	 = 1600
-		batch	 = 8
-		model	 = 'resnet34'
-		accumulate= True
-		bayes_opt = False
-		load_mod  = False
+	parser = argparse.ArgumentParser()
+	parser.add_argument('--eda',          action = 'store_false', default = True,    help = 'Not do train/test split')
+	parser.add_argument('--augment',      action = 'store_false', default = True,    help = 'Not use augmentations in the training')
+	parser.add_argument('--normalize',    action = 'store_true',  default = False,   help = 'Normalize the images or not')
+	parser.add_argument('--accumulate',   action = 'store_false', default = True,    help = 'Not doing gradient accumulation or not')
+	parser.add_argument('--bayes_opt',    action = 'store_true',  default = False,   help = 'Do Bayesian optimization in finding hyper-parameters')
+	parser.add_argument('-l','--load_mod',action = 'store_true',  default = False,   help = 'Load a pre-trained model')
+	parser.add_argument('-t','--test_run',action = 'store_true',  default = False,   help = 'Run the script quickly to check all functions')
+
+	parser.add_argument('--loss',        type = int,  default = 0,          help = '0 BCE vanilla; 1 wbce+dice')
+	parser.add_argument('--sch',         type = int,  default = 0,          help = 'set the schedule of the learning rate.')	
+	parser.add_argument('-m', '--model', type = str,  default = 'resnet34', help = 'Backbone network of the neural network.')
+	parser.add_argument('-e', '--epoch', type = int,  default = 5,          help = 'Number of epochs in the training')
+	parser.add_argument('--height',      type = int,  default = 256,        help = 'The height of the image')
+	parser.add_argument('--width',       type = int,  default = 1600,       help = 'The width of the image')
+	parser.add_argument('--category',    type = int,  default = 4,          help = 'The category of the problem')
+	parser.add_argument('-b', '--batch', type = int,  default = 8,          help = 'The batch size of the training')
+	parser.add_argument('-s','--swa',    type = int,  default = 4,          help = 'The number of epochs for stochastic weight averaging')
+	parser.add_argument('-o','--output', type = int,  default = 0,          help = 'The type of the network, 0 vanilla, 1 add regression, 2 add classification.')
+	args = parser.parse_args()
 
 	# input folder paths
 	TRAIN_PATH  = '../input/severstal-steel-defect-detection/train_images/'
 	TEST_PATH   = '../input/severstal-steel-defect-detection/test_images/'
 	TRAIN_MASKS = '../input/severstal-steel-defect-detection/train.csv'
-	MODEL_LOAD_PATH = '../input/severstal-model/model.pth'
+	# MODEL_LOAD_PATH = '../input/severstal-model/model.pth'
 	
 	# ouput folder paths
-	VALID_ID_FILE = '../output/validID.csv'
-	MODEL_FILE   = '../output/model.pth'
-	HISTORY_FILE = '../output/history.csv'
-	LOG_FILE     = '../output/log.txt'
-
+	dicSpec = {'m_':args.model, 'e_':args.epoch, 't_':int(args.test_run), 'sch_':args.sch, 'loss_':args.loss, 'out_':args.output}
+	strSpec = '_'.join(key+str(val) for key,val in dicSpec.items())
+	
+	VALID_ID_FILE = '../output/validID_{:s}.csv'.format(strSpec)
+	MODEL_FILE    = '../output/model_{:s}.pth'.format(strSpec)
+	MODEL_SWA_FILE= '../output/model_swa_{:s}.pth'.format(strSpec)
+	HISTORY_FILE  = '../output/history_{:s}.csv'.format(strSpec)
+	LOG_FILE      = '../output/log_{:s}.txt'.format(strSpec)
+	# rewrite the file if not load mod
+	with open(LOG_FILE, 'w') as fopen:
+		fopen.write(strSpec+'\n')
+	
 	# find all files in the directory
 	TRAIN_FILES_ALL = sorted(glob.glob(TRAIN_PATH+'*.jpg'))
 	TEST_FILES  = sorted(glob.glob(TEST_PATH+'*.jpg'))
-	print(len(TRAIN_FILES_ALL), len(TEST_FILES))
-	print(len(os.listdir(TRAIN_PATH)))
 	########################################################################
 	# Train test split
 	if args.eda:
@@ -222,8 +215,8 @@ if __name__ == '__main__':
 		mask_df = pd.read_csv(TRAIN_MASKS).set_index(['ImageId_ClassId']).fillna('-1')
 		print(mask_df.head())
 		# get train and test for statistics
-		steel_ds	   = SteelDataset(TRAIN_FILES_ALL, mask_df = mask_df)
-		steel_ds_test  = SteelDataset(TEST_FILES)
+		steel_ds	   = SteelDataset(TRAIN_FILES_ALL, args,  mask_df = mask_df)
+		steel_ds_test  = SteelDataset(TEST_FILES, args)
 
 		# get the statistics of the images
 		if args.test_run:
@@ -234,22 +227,23 @@ if __name__ == '__main__':
 		# there is a deviation in mean in this data set.
 		stat_df_test = steel_ds_test.stat_images(rows)
 		stat_df = steel_ds.stat_images(rows)
+
 		train_mean, train_std = stat_df['mean'].mean(), stat_df['std'].std()
 		test_mean, test_std   = stat_df_test['mean'].mean(), stat_df_test['std'].std()
 
 		# get the labels from the data
 		labels = list(stat_df.apply(lambda x:int(x['Class 1'] != 0) + \
-											int(x['Class 2'] != 0) + \
-											int(x['Class 3'] != 0) + \
-											int(x['Class 4'] != 0) != 0, axis=1))
+							int(x['Class 2'] != 0) + \
+							int(x['Class 3'] != 0) + \
+							int(x['Class 4'] != 0) != 0, axis=1))
 		# save the statistics
 		print(stat_df.shape, len(labels))
 		X_train, X_valid, _, _ = train_test_split(np.arange(stat_df.shape[0]), labels, test_size = 0.16, random_state = 1234)
 		valid_df = pd.DataFrame({'Valid':X_valid})
 		valid_df.to_csv(VALID_ID_FILE)
 		# print statistics
-		sout =  '========   Train Stat ==========\n' + analyze_labels(stat_df.iloc[X_train,:]) +\
-				'========Validation Stat ==========\n' + analyze_labels(stat_df.iloc[X_valid,:])
+		sout =  '\n========   Train Stat ==========\n' + analyze_labels(stat_df.iloc[X_train,:]) +\
+				'========Validation Stat ==========\n' + analyze_labels(stat_df.iloc[X_valid,:])+'\n'
 		print2file(sout, LOG_FILE)
 		# plot the distributions
 		fig, axs = plt.subplots(1,2, figsize=(16,5))
@@ -263,7 +257,7 @@ if __name__ == '__main__':
 		test_mean, test_std = 0.25951299299868136, 0.051800296725619116
 		# load validation id
 		X_valid = list(pd.read_csv(VALID_ID_FILE)['Valid'])
-		X_train = list(set(np.arange(TRAIN_FILES)) - set(X_valid))
+		X_train = list(set(np.arange(len(TRAIN_FILES_ALL))) - set(X_valid))
 
 
 	# not using sophisticated normalize
@@ -280,7 +274,7 @@ if __name__ == '__main__':
 			'Train mean/std {:.3f}/{:.3f}\n'.format(train_mean, train_std) + \
 			'Test mean/std {:.3f}/{:.3f}\n'.format(test_mean, test_std) +\
 			'Train num/sample {:d}'.format(len(TRAIN_FILES)) + ' '.join(TRAIN_FILES[:2]) + \
-			'\nValid num/sample {:d}'.format(len(VALID_FILES)) + ' '.join(VALID_FILES[:2])
+			'\nValid num/sample {:d}'.format(len(VALID_FILES)) + ' '.join(VALID_FILES[:2])+'\n'
 	print2file(sout, LOG_FILE)
 
 	########################################################################
@@ -313,13 +307,15 @@ if __name__ == '__main__':
 					print(i)
 					
 		# check dataloader			
-		steel_ds = SteelDataset(TRAIN_FILES, mask_df = mask_df)
-		steel_ds_train = SteelDataset(TRAIN_FILES, mask_df = mask_df, augment = augment_train)
-		steel_ds_valid = SteelDataset(VALID_FILES, mask_df = mask_df, augment = augment_valid)
-		image, mask = steel_ds_train[1]
+		steel_ds = SteelDataset(TRAIN_FILES, args, mask_df = mask_df)
+		steel_ds_train = SteelDataset(TRAIN_FILES, args, mask_df = mask_df, augment = augment_train)
+		steel_ds_valid = SteelDataset(VALID_FILES, args, mask_df = mask_df, augment = augment_valid)
+		res = steel_ds_train[1]
+		image, mask = res[0], res[1]
 		print(image.shape, image.min(), image.max())
 		print(mask.shape, mask.min(), mask.max())
-		image, mask = steel_ds_valid[1]
+		res = steel_ds_valid[1]
+		image, mask = res[0], res[1]
 		print(image.shape, image.min(), image.max())
 		print(mask.shape, mask.min(), mask.max())
 
@@ -329,18 +325,18 @@ if __name__ == '__main__':
 		for i in range(nplot):
 			ax = axs[divmod(i, 2)]
 			ax.axis('off')
-			plot_mask(*steel_ds[i], ax)
+			plot_mask(*steel_ds[i][:2], ax)
 
 			ax = axs[divmod(i + nplot, 2)]
-			plot_mask(*steel_ds_train[i], ax)
+			plot_mask(*steel_ds_train[i][:2], ax)
 			ax.axis('off')
 		plt.savefig('../output/Dataset_augment.png')
 
 	########################################################################
 	# Prepare dataset -> dataloader
 	# creat the data set
-	steel_ds_train = SteelDataset(TRAIN_FILES, mask_df = mask_df, augment = augment_train)
-	steel_ds_valid = SteelDataset(VALID_FILES, mask_df = mask_df, augment = augment_valid)	
+	steel_ds_train = SteelDataset(TRAIN_FILES, args, mask_df = mask_df, augment = augment_train)
+	steel_ds_valid = SteelDataset(VALID_FILES, args, mask_df = mask_df, augment = augment_valid)	
 		
 	# create the dataloader
 	trainloader = torch.utils.data.DataLoader(steel_ds_train, batch_size = args.batch, shuffle = True, num_workers = 4)
@@ -359,52 +355,84 @@ if __name__ == '__main__':
 	########################################################################
 	# Model
 	if args.model == 'resnet34':
-		net = Unet("resnet34", encoder_weights="imagenet", classes = 4, activation = None).to(device)  # pass model specification to the resnet32
+		net = Unet("resnet34", encoder_weights="imagenet", classes = 4, activation = None, args = args).to(device)  # pass model specification to the resnet32
 	else:
 		raise NotImplementedError
-
+	
 	########################################################################
 	# Define a Loss function and optimizer
-	criterion = nn.BCEWithLogitsLoss()
+	if args.loss == 0:
+		criterion = [nn.BCEWithLogitsLoss(), None]
+	elif args.loss == 1:
+		if args.output == 0:	
+			criterion = [criterion_wbce_dice, None]
+		elif args.output == 1:
+			criterion = [criterion_wbce_dice, criterion_wmse]
+		elif args.output == 2:
+			criterion = [criterion_wbce_dice, criterion_wbce]
+		else:
+			raise NotImplementedError
+	else:
+		raise NotImplementedError
+	
+	########################################################################
+	# optimizer
 	optimizer = optim.Adam(net.parameters(), lr = 0.001)
-	# scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[args.epoch//2, args.epoch*3//4], gamma = 0.5)
-
+	
 	########################################################################
 	# Train the network
 	if args.load_mod:
 		history = {'Train_loss':[], 'Train_dice':[], 'Valid_loss':[], 'Valid_dice':[]}
-		net.load_state_dict(torch.load(MODEL_LOAD_PATH))
+		net.load_state_dict(torch.load(MODEL_FILE))
 	else:
-		history = train_net(net, criterion, optimizer, device, args)
-	
-	# save the final result
-	print('Finished Training')
-	history_df = pd.DataFrame(history)
-	history_df.to_csv(HISTORY_FILE)
-	torch.save(net.state_dict(),MODEL_FILE)
-
-	# show the curve
-	fig, axs = plt.subplots(1,2,figsize=(16,4))
-	axs[0].plot(history['Train_loss'], label = 'Train Loss')
-	axs[0].plot(history['Valid_loss'], label = 'Valid Loss')
-	axs[0].legend();axs[0].grid()
-	axs[0].set_title('Loss')
-
-	axs[1].plot(history['Train_dice'], label = 'Train Dice')
-	axs[1].plot(history['Valid_dice'], label = 'Valid Dice')
-	axs[1].legend();axs[1].grid()
-	axs[1].set_title('Dice')
-	plt.savefig('../output/loss_dice.png')
+		net_swa, history = train_net(net, criterion, optimizer, device, args, LOG_FILE)
+		torch.save(net_swa, MODEL_SWA_FILE)
+		# save the final result
+		print('Finished Training')
+		history_df = pd.DataFrame(history)
+		history_df.to_csv(HISTORY_FILE)
+		torch.save(net.state_dict(),MODEL_FILE)
+		# show the curve
+		fig, axs = plt.subplots(1,2,figsize=(16,4))
+		axs[0].plot(history['Train_loss'], label = 'Train Loss')
+		axs[0].plot(history['Valid_loss'], label = 'Valid Loss')
+		axs[0].legend();axs[0].grid()
+		axs[0].set_title('Loss')
+		axs[1].plot(history['Train_dice'], label = 'Train Dice')
+		axs[1].plot(history['Valid_dice'], label = 'Valid Dice')
+		axs[1].legend();axs[1].grid()
+		axs[1].set_title('Dice')
+		plt.savefig('../output/loss_dice.png')
 
 	########################################################################
 	# Evaluate the network
 	# get all predictions of the validation set: maybe a memory error here.
-	dice, dicPred = evaluate_loader_post(net, device, validloader, args)
+	eva = Evaluate(net, device, validloader, args, isTest = False)
+	eva.search_parameter()
+	dice, dicPred, dicSubmit = eva.predict_dataloader()
+	eva.plot_sampled_predict()
 
 	# evaluate the prediction
-	sout = 'Final Dice {:.3f}\n'.format(dice/len(VALID_FILES)/4) +\
+	sout = '\nFinal Dice {:.3f}\n'.format(dice/len(VALID_FILES)/4) +\
 			'==============Predict===============\n' + \
 			analyze_labels(pd.DataFrame(dicPred)) +\
 			'==============True===============\n' + \
 			analyze_labels(stat_df.iloc[X_valid,:])
+	print(sout)
 	print2file(sout, LOG_FILE)
+	print2file(' '.join(str(key)+':'+str(val) for key,val in eva.dicPara.items()), LOG_FILE)
+	
+	########################################################################
+	# Evaluate the network
+	# get all predictions of the validation set: maybe a memory error here.
+	# net.load_state_dict(torch.load(MODEL_SWA_FILE))
+	# eva = Evaluate(net, device, validloader, args)
+	# eva.search_parameter()
+	# dice, dicPred, dicSubmit = eva.predict_dataloader()
+	
+	# evaluate the prediction
+	# sout = '\nFinal SWA Dice {:.3f}\n'.format(dice/len(VALID_FILES)/4) +\
+	#		'==============SWA Predict===============\n' + \
+        #                analyze_labels(pd.DataFrame(dicPred))
+	# print2file(sout, LOG_FILE)
+	# print2file(' '.join(str(key)+':'+str(val) for key,val in eva.dicPara.items()), LOG_FILE)

@@ -10,6 +10,7 @@ from torchvision.models.resnet import BasicBlock
 from torchvision.models.resnet import Bottleneck
 import torch.utils.model_zoo as model_zoo
 import torch.nn.functional as F
+import numpy as np
 
 from utils import seed_everything
 
@@ -55,7 +56,7 @@ pretrained_settings['resnet34'] = {
 			'num_classes': 1000
 		}
 	}
-def get_encoder(name, encoder_weights=None):
+def get_encoder(name, encoder_weights = None):
 	encoders = {
 		'resnet34': {
 			'encoder': ResNetEncoder,
@@ -212,21 +213,23 @@ class Unet(nn.Module):
 			decoder_channels = (256, 128, 64, 32, 16),
 			classes = 1,
 			activation = 'sigmoid',
-			center = False,):  # usefull for VGG models
+			center = False, args = None):  # usefull for VGG models
 
 		super().__init__()
-		
+	
+		self.args = args
+
 		self.encoder = get_encoder(
 			encoder_name,
 			encoder_weights = encoder_weights
 		)
 
 		self.decoder = UnetDecoder(
-			encoder_channels=self.encoder.out_shapes,
-			decoder_channels=decoder_channels,
-			final_channels=classes,
-			use_batchnorm=decoder_use_batchnorm,
-			center=center,
+			encoder_channels = self.encoder.out_shapes,
+			decoder_channels = decoder_channels,
+			final_channels = classes,
+			use_batchnorm = decoder_use_batchnorm,
+			center = center,
 		)
 
 		if callable(activation) or activation is None:
@@ -238,13 +241,44 @@ class Unet(nn.Module):
 		else:
 			raise ValueError('Activation should be "sigmoid"/"softmax"/callable/None')
 		self.name = 'u-{}'.format(encoder_name)
-  
+		
+		# add a regression/regression part
+		if self.args.output == 1 or self.args.output == 2: 
+			self.ap0 = nn.AvgPool2d((3,3))
+			self.nsize = self.get_flat_shape()
+			self.lin0 = nn.Linear(self.nsize, self.args.category)
+			# self.lin1 = nn.Linear(100, self.args.category)
+	
 
+	def get_flat_shape(self, input_shape = None):
+		'''get the shape of the bottom by a forward passing'''
+		if input_shape is None:
+			input_shape = (3, self.args.height, self.args.width)
+		x = self.encoder(torch.randn(1, *input_shape))
+		x = self.ap0(x[0])
+		return int(np.prod(x.size()[1:]))
+
+	
 	def forward(self, x):
 		"""Sequentially pass `x` trough model`s `encoder` and `decoder` (return logits!)"""
 		x = self.encoder(x)
-		x = self.decoder(x)
-		return x
+		# vanilla version
+		if self.args.output == 0:
+			x = self.decoder(x)
+			return x
+		# regression
+		elif self.args.output == 1:
+			xreg = self.ap0(x[0])
+			xreg = self.lin0(xreg.view(-1, self.nsize))
+			x = self.decoder(x)
+			return x, xreg		
+		# classification
+		elif self.args.output == 2:
+			xcla = self.ap0(x[0])
+			xcla = self.lin0(xcla.view(-1, self.nsize))
+			x = self.decoder(x)
+			return x, xcla
+	
 
 	def initialize(self):
 		for m in self.modules():
@@ -254,6 +288,7 @@ class Unet(nn.Module):
 				nn.init.constant_(m.weight, 1)
 				nn.init.constant_(m.bias, 0)
 				
+
 	def predict(self, x):
 		"""Inference method. Switch model to `eval` mode, call `.forward(x)`
 		and apply activation function (if activation is not `None`) with `torch.no_grad()`
