@@ -1,9 +1,11 @@
 import torch
 import torch.nn.functional as F
 import numpy as np
-# position of the height, width dimension
 
+
+from loss_lovasz import lovasz_hinge, lovasz_softmax
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 
 def criterion_weightedBCE(logit, truth, use_weight = True):
 	'Weighted BCE loss'
@@ -55,6 +57,20 @@ def criterion_dice(logit, truth):
 	return dice
 
 
-def criterion_wbce_dice(logit, truth, use_weight = True):
+def criterion_lovasz_hinge(logit, truth):
+    'Lovasz loss for four channels: Need to change the shape of images if it is for other tasks'
+    logit = logit.contiguous().view(-1, 256, 1600)
+    truth = truth.contiguous().view(-1, 256, 1600)
+    
+    loss = lovasz_hinge(logit, truth)
+    return loss
+
+
+def criterion_wbce_dice(logit, truth):
 	return criterion_weightedBCE(logit, truth, use_weight = True) + criterion_dice(logit, truth)
+
+
+def criterion_wbce_lovasz(logit, truth):
+	return criterion_weightedBCE(logit, truth, use_weight = True) + criterion_lovasz_hinge(logit, truth)
+
 

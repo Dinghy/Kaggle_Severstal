@@ -102,7 +102,7 @@ def train_net(net, criterion, optimizer, device, args, LOG_FILE, MODEL_FILE):
 
 			# forward + backward + optimize
 			outputs = net(images)
-			# accumulate the gradient
+			# do not accumulate the gradient
 			if not args.accumulate:
 				# different ways of handling the outputs
 				if args.output == 0:
@@ -113,6 +113,7 @@ def train_net(net, criterion, optimizer, device, args, LOG_FILE, MODEL_FILE):
 				optimizer.step()
 				optimizer.zero_grad()
 				batch_loss = loss.item()
+			# do accumulation
 			else:
 				acc_step = 64//args.batch
 				# different ways of handling the outputs
@@ -193,8 +194,10 @@ if __name__ == '__main__':
 	parser.add_argument('-b', '--batch', type = int,  default = 8,          help = 'The batch size of the training')
 	parser.add_argument('-s','--swa',    type = int,  default = 4,          help = 'The number of epochs for stochastic weight averaging')
 	parser.add_argument('-o','--output', type = int,  default = 0,          help = 'The type of the network, 0 vanilla, 1 add regression, 2 add classification.')
+	parser.add_argument('--seed',        type = int,  default = 1234,       help = 'The random seed of the algorithm.')
 	args = parser.parse_args()
 
+	seed_everything(seed = args.seed)
 	print('===========================')
 	for key, val in vars(args).items():
 		print('{}: {}'.format(key, val))
@@ -228,17 +231,17 @@ if __name__ == '__main__':
 	print(mask_df.head())
 	print('===========================\n')
 	########################################################################
+	# if test run a small version
+	if args.test_run:
+		rows = 100
+	else:
+		rows = len(TRAIN_FILES_ALL)
+
 	# Re run train test split
 	if not args.load_split:
 		# get train and test for statistics
 		steel_ds       = SteelDataset(TRAIN_FILES_ALL, args,  mask_df = mask_df)
 		steel_ds_test  = SteelDataset(TEST_FILES, args)
-
-		# get the statistics of the images
-		if args.test_run:
-			rows = 100
-		else:
-			rows = float('inf')
 
 		# there is a deviation in mean in this data set.
 		stat_df_test = steel_ds_test.stat_images(rows)
@@ -253,14 +256,16 @@ if __name__ == '__main__':
 							int(x['Class 3'] != 0) + \
 							int(x['Class 4'] != 0) != 0, axis=1))
 		# save the statistics
-		print(stat_df.shape, len(labels))
 		X_train, X_valid, _, _ = train_test_split(np.arange(stat_df.shape[0]), labels, test_size = 0.16, random_state = 1234)
 		valid_df = pd.DataFrame({'Valid':X_valid})
 		valid_df.to_csv(VALID_ID_FILE)
+		stat_df_valid = stat_df.iloc[X_valid,:]
+
 		# print statistics
 		sout =  '\n========   Train Stat ==========\n' + analyze_labels(stat_df.iloc[X_train,:]) +\
-				'========Validation Stat ==========\n' + analyze_labels(stat_df.iloc[X_valid,:])+'\n'
+				'======== Validation Stat ==========\n' + analyze_labels(stat_df_valid)+'\n'
 		print2file(sout, LOG_FILE)
+
 		# plot the distributions
 		fig, axs = plt.subplots(1,2, figsize=(16,5))
 		sns.distplot(stat_df['mean'], ax=axs[0], kde_kws={"label": "Train"}); axs[0].set_title('Distribution of mean');
@@ -268,24 +273,34 @@ if __name__ == '__main__':
 		sns.distplot(stat_df_test['mean'], ax=axs[0], kde_kws={"label": "Test"}); 
 		sns.distplot(stat_df_test['std'] , ax=axs[1], kde_kws={"label": "Test"}); 
 		plt.savefig('../output/Distribution.png')
+
+		# get the train and valid files
+		TRAIN_FILES = [TRAIN_FILES_ALL[i] for i in X_train]
+		VALID_FILES = [TRAIN_FILES_ALL[i] for i in X_valid]
+
 	else: # load previous result
 		train_mean, train_std = 0.3438812517320016, 0.056746666005067205
 		test_mean, test_std = 0.25951299299868136, 0.051800296725619116
 		# load validation id
-		X_valid = list(pd.read_csv(VALID_I)['Valid'])
-		X_train = list(set(np.arange(len(TRAIN_FILES_ALL))) - set(X_valid))
+		X_valid = list(pd.read_csv(VALID_I)['Valid'])[:rows]
+		X_train = list(set(np.arange(len(TRAIN_FILES_ALL))) - set(X_valid))[:rows]
 
+		# get the train and valid files
+		TRAIN_FILES = [TRAIN_FILES_ALL[i] for i in X_train]
+		VALID_FILES = [TRAIN_FILES_ALL[i] for i in X_valid]
+
+		steel_ds_valid = SteelDataset(VALID_FILES, args, mask_df = mask_df)
+		stat_df_valid = steel_ds_valid.stat_images(rows)
+
+		# print statistics
+		sout =  '======== Validation Stat ==========\n' + analyze_labels(stat_df_valid)+'\n'
+		print2file(sout, LOG_FILE)
 
 	# not using sophisticated normalize
 	if not args.normalize:
 		train_mean, train_std = 0, 1
 		test_mean, test_std = 0, 1
 		
-	# get the train and valid files
-	TRAIN_FILES = [TRAIN_FILES_ALL[i] for i in X_train]
-	VALID_FILES = [TRAIN_FILES_ALL[i] for i in X_valid]
-	
-
 	sout = 'Train/Test {:d}/{:d}\n'.format(len(TRAIN_FILES_ALL), len(TEST_FILES)) + \
 			'Train mean/std {:.3f}/{:.3f}\n'.format(train_mean, train_std) + \
 			'Test mean/std {:.3f}/{:.3f}\n'.format(test_mean, test_std) +\
@@ -295,12 +310,21 @@ if __name__ == '__main__':
 
 	########################################################################
 	# Augmentations
-	augment_train = Compose([
-		Flip(p=0.5),   # Flip vertically or horizontally or both
-		ShiftScaleRotate(rotate_limit = 10, p = 0.3),
-		Normalize(mean = (train_mean, train_mean, train_mean), std  = (train_std, train_std, train_std)),
-		ToFloat(max_value=1.)
-	],p=1)
+	if args.augment == 0 or args.augment == 2:
+		augment_train = Compose([
+			Flip(p=0.5),   # Flip vertically or horizontally or both
+			ShiftScaleRotate(rotate_limit = 10, p = 0.3),
+			Normalize(mean = (train_mean, train_mean, train_mean), std  = (train_std, train_std, train_std)),
+			ToFloat(max_value=1.)
+		],p=1)
+	elif args.augment == 1:
+		augment_train = Compose([
+			Flip(p=0.5),   # Flip vertically or horizontally or both
+			ShiftScaleRotate(rotate_limit = 10, p = 0.3),
+			RandomBrightnessContrast(p = 0.3),
+			Normalize(mean = (train_mean, train_mean, train_mean), std  = (train_std, train_std, train_std)),
+			ToFloat(max_value=1.)
+		],p=1)
 
 	# validation
 	augment_valid = Compose([
@@ -312,6 +336,8 @@ if __name__ == '__main__':
 		Normalize(mean=(test_mean, test_mean, test_mean), std=(test_std, test_std, test_std)),
 		ToFloat(max_value=1.)],p=1)
 
+
+	########################################################################
 	# do some simple checking
 	if args.test_run:
 		print(args)
@@ -349,6 +375,7 @@ if __name__ == '__main__':
 			ax.axis('off')
 		plt.savefig('../output/Dataset_augment.png')
 
+
 	########################################################################
 	# Prepare dataset -> dataloader
 	# creat the data set
@@ -369,6 +396,7 @@ if __name__ == '__main__':
 		print(inputs.shape, inputs.min(), inputs.max(), inputs.dtype)
 		print(labels.shape, labels.min(), labels.max(), labels.dtype)
 
+
 	########################################################################
 	# Model
 	if args.model == 'resnet34':
@@ -376,6 +404,7 @@ if __name__ == '__main__':
 	else:
 		raise NotImplementedError
 	
+
 	########################################################################
 	# Define a Loss function and optimizer
 	if args.loss == 0:
@@ -389,15 +418,26 @@ if __name__ == '__main__':
 			criterion = [criterion_wbce_dice, criterion_wbce]
 		else:
 			raise NotImplementedError
+	elif args.loss == 2:
+		if args.output == 0:	
+			criterion = [criterion_wbce_lovasz, None]
+		elif args.output == 1:
+			criterion = [criterion_wbce_lovasz, criterion_wmse]
+		elif args.output == 2:
+			criterion = [criterion_wbce_lovasz, criterion_wbce]
+		else:
+			raise NotImplementedError
 	else:
 		raise NotImplementedError
 	
+
 	########################################################################
 	# optimizer
 	optimizer = optim.Adam(net.parameters(), lr = 0.001)
 	
 	########################################################################
 	# Train the network
+	seed_everything(seed = args.seed)
 	if args.load_mod:
 		history = {'Train_loss':[], 'Train_dice':[], 'Valid_loss':[], 'Valid_dice':[]}
 		net.load_state_dict(torch.load(MODEL_FILE))
@@ -421,6 +461,7 @@ if __name__ == '__main__':
 		axs[1].set_title('Dice')
 		plt.savefig('../output/loss_dice.png')
 
+
 	########################################################################
 	# Evaluate the network
 	# get all predictions of the validation set: maybe a memory error here.
@@ -437,7 +478,7 @@ if __name__ == '__main__':
 			'==============Predict===============\n' + \
 			analyze_labels(pd.DataFrame(dicPred)) +\
 			'==============True===============\n' + \
-			analyze_labels(stat_df.iloc[X_valid,:])
+			analyze_labels(stat_df_valid)
 		print(sout)
 		print2file(sout, LOG_FILE)
 		print2file(' '.join(str(key)+':'+str(val) for key,val in eva.dicPara.items()), LOG_FILE)
