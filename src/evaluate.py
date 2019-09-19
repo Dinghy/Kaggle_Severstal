@@ -10,7 +10,7 @@ from utils import mask2rle, rle2mask, plot_mask
 def post_process_single(pred, other, thres_seg = 0.5, size_seg = 100, thres_oth = -float('inf'), size_oth = 0):
     pred = (pred > thres_seg).astype(int)
     # TTA: combining classification and size thresholding
-    nsize = pred.sum()
+    nsize = pred.sum() 
     if nsize < size_seg or (nsize < size_oth+size_seg and other < thres_oth):
         pred *= 0
     return pred
@@ -25,7 +25,8 @@ def post_process(pred, other, dicPara):
 						'thres_oth{:d}'.format(category+1), 'size_oth{:d}'.format(category+1))]
         else:
             paras = [dicPara[item] for item in ('thres_seg{:d}'.format(category+1), 'size_seg{:d}'.format(category+1))]
-        pred[:,:,category] = post_process_single(pred[:,:,category], other, *paras)
+        pred[:,:,category] = post_process_single(pred[:,:,category], other[category], *paras)
+
     return pred
 
 
@@ -71,11 +72,11 @@ class Evaluate:
                         if category == 0:
                             trues.append(mask2rle(true_mask))
                             preds.append(output_merge[:,:,category])
-                            others.append(output_other[0, category])
+                            others.append(output_other[category])
                         else:
                             trues[ipos] = mask2rle(true_mask)
                             preds[ipos] = output_merge[:,:,category]
-                            others[ipos] = output_other[0, category]
+                            others[ipos] = output_other[category]
                         ipos += 1
             
             # using bayes optimize to determine the threshold
@@ -133,7 +134,7 @@ class Evaluate:
                 outputs = np.flipud(outputs)
             # merge the result
             output_merge += outputs/4
-        return output_merge, output_other
+        return output_merge, output_other[0]
 
 
     def predict_dataloader(self, to_rle = False, fnames = None):
@@ -215,7 +216,7 @@ class Evaluate:
                     break
         
         if self.isTest:
-            plt.savefig('../output/evaluate_image_test.png')
+            plt.savefig('evaluate_image_test.png')
         else:
             plt.savefig('../output/evaluate_image.png')
         return

@@ -74,7 +74,7 @@ def get_encoder(name, encoder_weights = None):
 
 	if encoder_weights is not None:
 		settings = encoders[name]['pretrained_settings'][encoder_weights]
-		encoder.load_state_dict(torch.load('resnet34-333f7ec4.pth'))
+		encoder.load_state_dict(torch.load('weights/resnet34-333f7ec4.pth'))
 	return encoder
 
 ###########################################################
@@ -270,12 +270,16 @@ class Unet(nn.Module):
 		elif self.args.output == 1:
 			xreg = self.ap0(x[0])
 			xreg = self.lin0(xreg.view(-1, self.nsize))
+			# xreg = F.relu(self.lin0(xreg.view(-1, self.nsize)))
+			# xreg = self.lin1(xreg)
 			x = self.decoder(x)
 			return x, xreg		
 		# classification
 		elif self.args.output == 2:
 			xcla = self.ap0(x[0])
 			xcla = self.lin0(xcla.view(-1, self.nsize))
+			# xcla = F.relu(self.lin0(xcla.view(-1, self.nsize)))
+			# xcla = self.lin1(xcla)
 			x = self.decoder(x)
 			return x, xcla
 	

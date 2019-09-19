@@ -69,17 +69,20 @@ def evaluate_loader(net, device, criterion, dataloader, args):
 	return loss, dice, other
 
 
-def train_net(net, criterion, optimizer, device, args, LOG_FILE):
+def train_net(net, criterion, optimizer, device, args, LOG_FILE, MODEL_FILE):
 	# output regression information
 	history = {'Train_loss':[], 'Train_dice':[], 'Train_other':[],  'Valid_loss':[], 'Valid_dice':[], 'Valid_other':[]}	
 
 	# scheduler
 	if args.sch == 1:
-		scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones = [args.epoch//2, args.epoch*3//4], gamma = 0.5)
-	
+		scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones = [args.epoch//2, args.epoch*3//4], gamma = 0.4)
+	elif args.sch == 2:
+		scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epoch, 1.6e-4)
+
 	# criterion
 	criterion_seg, criterion_other = criterion[0], criterion[1]
-
+	
+	val_dice_best = -float('inf')
 	# main iteration
 	for epoch in range(args.epoch):  # loop over the dataset multiple times
 		net.train()
@@ -142,6 +145,12 @@ def train_net(net, criterion, optimizer, device, args, LOG_FILE):
 		# after every epoch, print the statistics
 		net.eval()
 		val_loss, val_dice, val_other = evaluate_loader(net, device, criterion, validloader, args)
+		
+		# save the best up to now
+		if val_dice > val_dice_best:
+			print('Improving val_dice from {:.3f} to {:.3f}, saving the model'.format(val_dice_best/len(VALID_FILES)/args.category, val_dice/len(VALID_FILES)/args.category))
+			val_dice_best = val_dice
+			torch.save(net.state_dict(),MODEL_FILE)
 
 		# update the learning rate
 		if args.sch > 0:
@@ -166,18 +175,18 @@ def train_net(net, criterion, optimizer, device, args, LOG_FILE):
 if __name__ == '__main__':
 	# argsparse
 	parser = argparse.ArgumentParser()
-	parser.add_argument('--eda',          action = 'store_false', default = True,    help = 'Not do train/test split')
-	parser.add_argument('--augment',      action = 'store_false', default = True,    help = 'Not use augmentations in the training')
+	parser.add_argument('--load_split',   action = 'store_false', default = True,    help = 'Rerun train/test split')
 	parser.add_argument('--normalize',    action = 'store_true',  default = False,   help = 'Normalize the images or not')
 	parser.add_argument('--accumulate',   action = 'store_false', default = True,    help = 'Not doing gradient accumulation or not')
 	parser.add_argument('--bayes_opt',    action = 'store_true',  default = False,   help = 'Do Bayesian optimization in finding hyper-parameters')
 	parser.add_argument('-l','--load_mod',action = 'store_true',  default = False,   help = 'Load a pre-trained model')
 	parser.add_argument('-t','--test_run',action = 'store_true',  default = False,   help = 'Run the script quickly to check all functions')
-
-	parser.add_argument('--loss',        type = int,  default = 0,          help = '0 BCE vanilla; 1 wbce+dice')
-	parser.add_argument('--sch',         type = int,  default = 0,          help = 'set the schedule of the learning rate.')	
-	parser.add_argument('-m', '--model', type = str,  default = 'resnet34', help = 'Backbone network of the neural network.')
-	parser.add_argument('-e', '--epoch', type = int,  default = 5,          help = 'Number of epochs in the training')
+	
+	parser.add_argument('--augment',     type = int,  default = 0,          help = 'The type of train augmentations: 0 vanilla, 1 add contrast, 2 add  ')
+	parser.add_argument('--loss',        type = int,  default = 0,          help = 'The loss: 0 BCE vanilla; 1 wbce+dice; 2 wbce+lovasz.')
+	parser.add_argument('--sch',         type = int,  default = 0,          help = 'The schedule of the learning rate: 0 step; 1 cosine annealing; 2 cosine annealing with warmup.')	
+	parser.add_argument('-m', '--model', type = str,  default = 'resnet34', help = 'The backbone network of the neural network.')
+	parser.add_argument('-e', '--epoch', type = int,  default = 5,          help = 'The number of epochs in the training')
 	parser.add_argument('--height',      type = int,  default = 256,        help = 'The height of the image')
 	parser.add_argument('--width',       type = int,  default = 1600,       help = 'The width of the image')
 	parser.add_argument('--category',    type = int,  default = 4,          help = 'The category of the problem')
@@ -186,11 +195,15 @@ if __name__ == '__main__':
 	parser.add_argument('-o','--output', type = int,  default = 0,          help = 'The type of the network, 0 vanilla, 1 add regression, 2 add classification.')
 	args = parser.parse_args()
 
+	print('===========================')
+	for key, val in vars(args).items():
+		print('{}: {}'.format(key, val))
+	print('===========================\n')
+
 	# input folder paths
 	TRAIN_PATH  = '../input/severstal-steel-defect-detection/train_images/'
 	TEST_PATH   = '../input/severstal-steel-defect-detection/test_images/'
 	TRAIN_MASKS = '../input/severstal-steel-defect-detection/train.csv'
-	# MODEL_LOAD_PATH = '../input/severstal-model/model.pth'
 	
 	# ouput folder paths
 	dicSpec = {'m_':args.model, 'e_':args.epoch, 't_':int(args.test_run), 'sch_':args.sch, 'loss_':args.loss, 'out_':args.output}
@@ -202,20 +215,23 @@ if __name__ == '__main__':
 	HISTORY_FILE  = '../output/history_{:s}.csv'.format(strSpec)
 	LOG_FILE      = '../output/log_{:s}.txt'.format(strSpec)
 	# rewrite the file if not load mod
-	with open(LOG_FILE, 'w') as fopen:
-		fopen.write(strSpec+'\n')
+	if not args.load_mod:
+		with open(LOG_FILE, 'w') as fopen:
+			fopen.write(strSpec+'\n')
 	
 	# find all files in the directory
 	TRAIN_FILES_ALL = sorted(glob.glob(TRAIN_PATH+'*.jpg'))
-	TEST_FILES  = sorted(glob.glob(TEST_PATH+'*.jpg'))
+	TEST_FILES      = sorted(glob.glob(TEST_PATH+'*.jpg'))
+	
+	# read in the masks
+	mask_df = pd.read_csv(TRAIN_MASKS).set_index(['ImageId_ClassId']).fillna('-1')
+	print(mask_df.head())
+	print('===========================\n')
 	########################################################################
-	# Train test split
-	if args.eda:
-		# read in the masks
-		mask_df = pd.read_csv(TRAIN_MASKS).set_index(['ImageId_ClassId']).fillna('-1')
-		print(mask_df.head())
+	# Re run train test split
+	if not args.load_split:
 		# get train and test for statistics
-		steel_ds	   = SteelDataset(TRAIN_FILES_ALL, args,  mask_df = mask_df)
+		steel_ds       = SteelDataset(TRAIN_FILES_ALL, args,  mask_df = mask_df)
 		steel_ds_test  = SteelDataset(TEST_FILES, args)
 
 		# get the statistics of the images
@@ -256,7 +272,7 @@ if __name__ == '__main__':
 		train_mean, train_std = 0.3438812517320016, 0.056746666005067205
 		test_mean, test_std = 0.25951299299868136, 0.051800296725619116
 		# load validation id
-		X_valid = list(pd.read_csv(VALID_ID_FILE)['Valid'])
+		X_valid = list(pd.read_csv(VALID_I)['Valid'])
 		X_train = list(set(np.arange(len(TRAIN_FILES_ALL))) - set(X_valid))
 
 
@@ -281,7 +297,7 @@ if __name__ == '__main__':
 	# Augmentations
 	augment_train = Compose([
 		Flip(p=0.5),   # Flip vertically or horizontally or both
-		ShiftScaleRotate(rotate_limit = 5, p = 0.25),
+		ShiftScaleRotate(rotate_limit = 10, p = 0.3),
 		Normalize(mean = (train_mean, train_mean, train_mean), std  = (train_std, train_std, train_std)),
 		ToFloat(max_value=1.)
 	],p=1)
@@ -298,6 +314,7 @@ if __name__ == '__main__':
 
 	# do some simple checking
 	if args.test_run:
+		print(args)
 		# check rle2mask and mask2rle
 		mask_df = pd.read_csv(TRAIN_MASKS).set_index(['ImageId_ClassId']).fillna('-1')
 		for i, pixel in enumerate(mask_df['EncodedPixels']):
@@ -385,13 +402,13 @@ if __name__ == '__main__':
 		history = {'Train_loss':[], 'Train_dice':[], 'Valid_loss':[], 'Valid_dice':[]}
 		net.load_state_dict(torch.load(MODEL_FILE))
 	else:
-		net_swa, history = train_net(net, criterion, optimizer, device, args, LOG_FILE)
+		net_swa, history = train_net(net, criterion, optimizer, device, args, LOG_FILE, MODEL_FILE)
 		torch.save(net_swa, MODEL_SWA_FILE)
 		# save the final result
 		print('Finished Training')
 		history_df = pd.DataFrame(history)
 		history_df.to_csv(HISTORY_FILE)
-		torch.save(net.state_dict(),MODEL_FILE)
+		# torch.save(net.state_dict(),MODEL_FILE)
 		# show the curve
 		fig, axs = plt.subplots(1,2,figsize=(16,4))
 		axs[0].plot(history['Train_loss'], label = 'Train Loss')
@@ -407,32 +424,34 @@ if __name__ == '__main__':
 	########################################################################
 	# Evaluate the network
 	# get all predictions of the validation set: maybe a memory error here.
-	eva = Evaluate(net, device, validloader, args, isTest = False)
-	eva.search_parameter()
-	dice, dicPred, dicSubmit = eva.predict_dataloader()
-	eva.plot_sampled_predict()
+	if args.load_mod:
+		# load the best model
+		net.load_state_dict(torch.load(MODEL_FILE))
+		eva = Evaluate(net, device, validloader, args, isTest = False)
+		eva.search_parameter()
+		dice, dicPred, dicSubmit = eva.predict_dataloader()
+		eva.plot_sampled_predict()
 
-	# evaluate the prediction
-	sout = '\nFinal Dice {:.3f}\n'.format(dice/len(VALID_FILES)/4) +\
+		# evaluate the prediction
+		sout = '\nFinal Dice {:.3f}\n'.format(dice/len(VALID_FILES)/4) +\
 			'==============Predict===============\n' + \
 			analyze_labels(pd.DataFrame(dicPred)) +\
 			'==============True===============\n' + \
 			analyze_labels(stat_df.iloc[X_valid,:])
-	print(sout)
-	print2file(sout, LOG_FILE)
-	print2file(' '.join(str(key)+':'+str(val) for key,val in eva.dicPara.items()), LOG_FILE)
+		print(sout)
+		print2file(sout, LOG_FILE)
+		print2file(' '.join(str(key)+':'+str(val) for key,val in eva.dicPara.items()), LOG_FILE)
 	
-	########################################################################
-	# Evaluate the network
-	# get all predictions of the validation set: maybe a memory error here.
-	# net.load_state_dict(torch.load(MODEL_SWA_FILE))
-	# eva = Evaluate(net, device, validloader, args)
-	# eva.search_parameter()
-	# dice, dicPred, dicSubmit = eva.predict_dataloader()
+		# load swa model
+		net.load_state_dict(torch.load(MODEL_SWA_FILE))
+		eva = Evaluate(net, device, validloader, args, isTest = False)
+		eva.search_parameter()
+		dice, dicPred, dicSubmit = eva.predict_dataloader()
 	
-	# evaluate the prediction
-	# sout = '\nFinal SWA Dice {:.3f}\n'.format(dice/len(VALID_FILES)/4) +\
-	#		'==============SWA Predict===============\n' + \
-        #                analyze_labels(pd.DataFrame(dicPred))
-	# print2file(sout, LOG_FILE)
-	# print2file(' '.join(str(key)+':'+str(val) for key,val in eva.dicPara.items()), LOG_FILE)
+		# evaluate the prediction
+		sout = '\n\nFinal SWA Dice {:.3f}\n'.format(dice/len(VALID_FILES)/4) +\
+			'==============SWA Predict===============\n' + \
+                        analyze_labels(pd.DataFrame(dicPred))
+		print(sout)
+		print2file(sout, LOG_FILE)
+		print2file(' '.join(str(key)+':'+str(val) for key,val in eva.dicPara.items()), LOG_FILE)

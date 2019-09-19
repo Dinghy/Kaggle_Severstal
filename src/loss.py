@@ -10,8 +10,8 @@ def criterion_weightedBCE(logit, truth, use_weight = True):
 	h, w = 2, 3
 	# use weighted function
 	if use_weight:
-		pos_weight = np.array([1./0.4, 1./0.2, 1., 1./0.4]).astype(np.float32)
-		neg_weight = np.array([1./1.6, 1./1.8, 1., 1./1.6]).astype(np.float32) 
+		pos_weight = np.array([1./0.4, 1./0.1, 1./0.8, 1./0.4]).astype(np.float32)
+		neg_weight = np.array([1./1.6, 1./1.9, 1./1.2, 1./1.6]).astype(np.float32) 
 	# unweighted version
 	else:
 		pos_weight = np.array([1., 1., 1., 1.]).astype(np.float32) 
@@ -26,8 +26,8 @@ def criterion_weightedBCE(logit, truth, use_weight = True):
 def criterion_wbce(pred, truth):
 	'Weighted BCE loss'
 	# use weighted function
-	pos_weight = np.array([1./0.4, 1./0.2, 1., 1./0.4]).astype(np.float32)
-	neg_weight = np.array([1./1.6, 1./1.8, 1., 1./1.6]).astype(np.float32)
+	pos_weight = np.array([1./0.4, 1./0.1, 1./0.8, 1./0.4]).astype(np.float32)
+	neg_weight = np.array([1./1.6, 1./1.9, 1./1.2, 1./1.6]).astype(np.float32)
 	weight = (truth == 1).float() * torch.from_numpy(pos_weight).to(device)+\
 		 (truth == 0).float() * torch.from_numpy(neg_weight).to(device)
 	res = F.binary_cross_entropy_with_logits(pred, truth, reduction='none')
@@ -36,8 +36,8 @@ def criterion_wbce(pred, truth):
 
 def criterion_wmse(pred, truth):
 	'Weighted mse loss'
-	pos_weight = np.array([1./0.4, 1./0.2, 1., 1./0.4]).astype(np.float32)
-	neg_weight = np.array([1./1.6, 1./1.8, 1., 1./1.6]).astype(np.float32)
+	pos_weight = np.array([1./0.4, 1./0.1, 1./0.8, 1./0.4]).astype(np.float32)
+	neg_weight = np.array([1./1.6, 1./1.9, 1./1.2, 1./1.6]).astype(np.float32)
 	
 	weight = (truth == 1).float() * torch.from_numpy(pos_weight).to(device)+\
 		 (truth == 0).float() * torch.from_numpy(neg_weight).to(device)
