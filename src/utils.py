@@ -66,8 +66,21 @@ def analyze_labels(stat_df, rows = float('inf')):
 										int(x['Class 4'] > 0) == i, axis=1).sum() for i in range(5)]
 	# output the information
 	sres = 'Four labels ratio (1~4): {:.3f},{:.3f},{:.3f},{:.3f}\n'.format(*pos_ratio) + \
-            'Label Num (Zero labels~four Labels): {:d},{:d},{:d},{:d},{:d}\n'.format(*label_nums) + \
-            'Label ratio (Zero labels~four Labels): {:.4f},{:.4f},{:.4f},{:.4f},{:.4f}\n'.format(*[item/total_num for item in label_nums])
+			'Label Num (Zero labels~four Labels): {:d},{:d},{:d},{:d},{:d}\n'.format(*label_nums) + \
+			'Label ratio (Zero labels~four Labels): {:.4f},{:.4f},{:.4f},{:.4f},{:.4f}\n'.format(*[item/total_num for item in label_nums])
+
+	# Dice, True, Class
+	if 'Dice 1' in stat_df.columns:
+		for i in range(4):
+			stat_df['Label {:d}'.format(i+1)] = 1*(stat_df['True {:d}'.format(i+1)] > 0)
+			nmean = stat_df['Dice {:d}'.format(i+1)].mean()
+			group = stat_df.groupby(['Label {:d}'.format(i+1)])
+			dice_avg = list(group['Dice {:d}'.format(i+1)].mean())
+			dice_sum = list(group['Dice {:d}'.format(i+1)].sum())
+			dice_num = list(group['Dice {:d}'.format(i+1)].count())
+			print('Category {:d}: Mean {:.4f} [Neg,{:.4f}; Pos,{:.4f}], [Neg,{:.3f}; Pos,{:.3f}], [Neg,{:d}; Pos,{:d}]'.\
+				  format(i+1, nmean, *dice_avg, *dice_sum, *dice_num))
+
 	return sres
 
 
