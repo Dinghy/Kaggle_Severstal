@@ -8,34 +8,34 @@ from utils import rle2mask
 
 
 def random_crop_shift_pad(image, mask, p = 0.3):
-    # randomly crop a part from the image in width direction
-    # randomly shift in the width direction
-    # pad the empty part with zero
-    height, width = image.shape[:2]
-    if np.random.uniform() >= p:
-        return image, mask
-    
-    image_sum = np.sum(image, axis = (0,2))/3
-    pos = np.where(image_sum <= 10)[0] # black positions
-    if len(pos) <= 5: # full image
-        beg, end = 0, width-1
-    elif pos[0] != 0: # image in the front
-        beg, end = 0, pos[0]-1 
-    else:             # image in the back
-        beg, end = pos[-1]+1, width-1
-    
-    if end-beg+1 >= 800:
-        dx   = np.random.randint(200, end-beg+1)  # width of the crop
-        image_new, mask_new = np.random.uniform(size = image.shape)*0.01, np.zeros(mask.shape)
-        if np.random.uniform() >= 0.5:  # cat to left
-            image_new[:, :dx] = image[:,beg:beg+dx]
-            mask_new[:, :dx] = mask[:,beg:beg+dx]
-        else:                           # cat to right
-            image_new[:, -dx:] = image[:,beg:beg+dx]
-            mask_new[:, -dx:] = mask[:,beg:beg+dx]
-        return image_new, mask_new
-    else:
-        return image, mask
+	# randomly crop a part from the image in width direction
+	# randomly shift in the width direction
+	# pad the empty part with zero
+	height, width = image.shape[:2]
+	if np.random.uniform() >= p:
+		return image, mask
+	
+	image_sum = np.sum(image, axis = (0,2))/3
+	pos = np.where(image_sum <= 10)[0] # black positions
+	if len(pos) <= 5: # full image
+		beg, end = 0, width-1
+	elif pos[0] != 0: # image in the front
+		beg, end = 0, pos[0]-1 
+	else:			 # image in the back
+		beg, end = pos[-1]+1, width-1
+	
+	if end-beg+1 >= 800:
+		dx   = np.random.randint(200, end-beg+1)  # width of the crop
+		image_new, mask_new = np.random.uniform(size = image.shape)*0.01, np.zeros(mask.shape)
+		if np.random.uniform() >= 0.5:  # cat to left
+			image_new[:, :dx] = image[:,beg:beg+dx]
+			mask_new[:, :dx] = mask[:,beg:beg+dx]
+		else:						   # cat to right
+			image_new[:, -dx:] = image[:,beg:beg+dx]
+			mask_new[:, -dx:] = mask[:,beg:beg+dx]
+		return image_new, mask_new
+	else:
+		return image, mask
 
 
 class SteelDataset(Dataset):
@@ -75,8 +75,8 @@ class SteelDataset(Dataset):
 		if self.augment is not None:
 			augmented = self.augment(image = image, mask = mask)
 			image, mask = augmented['image'], augmented['mask']
-			# do additional augmentations which are not supported
-			if self.args.augment == 2:
+			# do additional augmentations for training data set
+			if len([item for item in self.augment]) > 2 and self.args.augment == 2:
 				image, mask = random_crop_shift_pad(image, mask)
 
 		# do simple normalization
