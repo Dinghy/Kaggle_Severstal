@@ -494,4 +494,4 @@ if __name__ == '__main__':
                         analyze_labels(pd.DataFrame(dicPred))
 		print(sout)
 		print2file(sout, LOG_FILE)
-		print2file(' '.join(str(key)+':'+str(val) for key,val in eva.dicPara.items()), LOG_FILE)
+		print2file(','.join('"'+str(key)+'":'+str(val) for key,val in eva.dicPara.items()), LOG_FILE)
