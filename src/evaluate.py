@@ -22,7 +22,7 @@ def post_process(pred, other, dicPara):
     for category in range(4):
         if 'thres_oth{:d}'.format(category+1) in dicPara:
             paras = [dicPara[item] for item in ('thres_seg{:d}'.format(category+1), 'size_seg{:d}'.format(category+1), \
-						'thres_oth{:d}'.format(category+1), 'size_oth{:d}'.format(category+1))]
+                        'thres_oth{:d}'.format(category+1), 'size_oth{:d}'.format(category+1))]
         else:
             paras = [dicPara[item] for item in ('thres_seg{:d}'.format(category+1), 'size_seg{:d}'.format(category+1))]
         pred[:,:,category] = post_process_single(pred[:,:,category], other[category], *paras)
@@ -145,11 +145,17 @@ class Evaluate:
             raise ValueError('File names are not given.')
 
         self.net.eval()
-        dicPred = {'Class '+str(classid+1):[] for classid in range(4)}
+        dicPred = dict()
+        for classid in range(self.args.category):
+            dicPred['Class '+str(classid+1)] = []
+            dicPred['Dice '+str(classid+1)] = []
+            dicPred['True '+str(classid+1)] = []
         dicSubmit = {'ImageId_ClassId':[], 'EncodedPixels':[]}
         dice, preds = 0.0, []
         ipos = 0
-        
+        def area_ratio(mask):
+            return mask.sum()/self.args.height/self.args.width
+            
         with torch.no_grad():
             for data in tqdm(self.dataloader):
                 images, labels = data[0], data[1]
@@ -169,8 +175,13 @@ class Evaluate:
                             dicSubmit['ImageId_ClassId'].append(fname_short)
                             rle = mask2rle(output_thres[:,:,category])
                             dicSubmit['EncodedPixels'].append(rle)
-                        dicPred['Class {:d}'.format(category+1)].append(output_thres[:,:,category].sum()/self.args.height/self.args.width)
-
+                        dicPred['Class {:d}'.format(category+1)].append(area_ratio(output_thres[:,:,category]))
+                        
+                        if not self.isTest:
+                            dice_cat = dice_metric(label_raw[:,:,category].detach().numpy(), output_thres[:,:,category])
+                            dicPred['Dice {:d}'.format(category+1)].append(dice_cat)
+                            dicPred['True {:d}'.format(category+1)].append(area_ratio(label_raw[:,:,category].detach().numpy()))
+                            
                     ipos += 1
                     # calculate the dice if it is not a test dataloader
                     if not self.isTest:
