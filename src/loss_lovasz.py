@@ -105,7 +105,10 @@ def lovasz_hinge_flat(logits, labels):
     perm = perm.data
     gt_sorted = labels[perm]
     grad = lovasz_grad(gt_sorted)
-    loss = torch.dot(F.relu(errors_sorted), Variable(grad))
+    weight = 1
+    if labels.sum() == 0:
+        weight = 0.2
+    loss = weight*torch.dot(F.relu(errors_sorted), Variable(grad))
     return loss
 
 

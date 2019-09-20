@@ -26,7 +26,7 @@ from dataset import SteelDataset
 from unet import Unet
 from metric import dice_metric
 from utils import mask2rle, rle2mask, plot_mask, analyze_labels, seed_everything, print2file
-from loss import criterion_wbce_dice, criterion_wmse, criterion_wbce
+from loss import criterion_wbce_dice, criterion_wbce_lovasz, criterion_wmse, criterion_wbce
 from evaluate import Evaluate
 
 def evaluate_batch(data, outputs, args, threshold = 0.5):
@@ -209,7 +209,7 @@ if __name__ == '__main__':
 	TRAIN_MASKS = '../input/severstal-steel-defect-detection/train.csv'
 	
 	# ouput folder paths
-	dicSpec = {'m_':args.model, 'e_':args.epoch, 't_':int(args.test_run), 'sch_':args.sch, 'loss_':args.loss, 'out_':args.output}
+	dicSpec = {'m_':args.model, 'e_':args.epoch, 't_':int(args.test_run), 'sch_':args.sch, 'loss_':args.loss, 'out_':args.output, 'seed_':args.seed}
 	strSpec = '_'.join(key+str(val) for key,val in dicSpec.items())
 	
 	VALID_ID_FILE = '../output/validID_{:s}.csv'.format(strSpec)
@@ -282,7 +282,7 @@ if __name__ == '__main__':
 		train_mean, train_std = 0.3438812517320016, 0.056746666005067205
 		test_mean, test_std = 0.25951299299868136, 0.051800296725619116
 		# load validation id
-		X_valid = list(pd.read_csv(VALID_I)['Valid'])[:rows]
+		X_valid = list(pd.read_csv('validID.csv')['Valid'])[:rows]
 		X_train = list(set(np.arange(len(TRAIN_FILES_ALL))) - set(X_valid))[:rows]
 
 		# get the train and valid files
@@ -340,7 +340,6 @@ if __name__ == '__main__':
 	########################################################################
 	# do some simple checking
 	if args.test_run:
-		print(args)
 		# check rle2mask and mask2rle
 		mask_df = pd.read_csv(TRAIN_MASKS).set_index(['ImageId_ClassId']).fillna('-1')
 		for i, pixel in enumerate(mask_df['EncodedPixels']):

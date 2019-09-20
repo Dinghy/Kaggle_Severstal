@@ -7,7 +7,7 @@ from tqdm import tqdm
 from utils import rle2mask
 
 
-def random_crop_shift_pad(image, mask, p = 0.2):
+def random_crop_shift_pad(image, mask, p = 0.3):
     # randomly crop a part from the image in width direction
     # randomly shift in the width direction
     # pad the empty part with zero
@@ -27,10 +27,10 @@ def random_crop_shift_pad(image, mask, p = 0.2):
     if end-beg+1 >= 800:
         dx   = np.random.randint(200, end-beg+1)  # width of the crop
         image_new, mask_new = np.random.uniform(size = image.shape)*0.01, np.zeros(mask.shape)
-        if np.random.uniform() >= 0.5:
+        if np.random.uniform() >= 0.5:  # cat to left
             image_new[:, :dx] = image[:,beg:beg+dx]
             mask_new[:, :dx] = mask[:,beg:beg+dx]
-        else:
+        else:                           # cat to right
             image_new[:, -dx:] = image[:,beg:beg+dx]
             mask_new[:, -dx:] = mask[:,beg:beg+dx]
         return image_new, mask_new
