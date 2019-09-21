@@ -9,7 +9,7 @@ import seaborn as sns
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 from albumentations import (Compose, Flip, HorizontalFlip, Normalize, 
-	RandomBrightness, RandomContrast, RandomGamma, OneOf, ToFloat, 
+	RandomBrightnessContrast, RandomBrightness, RandomContrast, RandomGamma, OneOf, ToFloat, 
 	RandomSizedCrop, ShiftScaleRotate)
 import copy
 from bayes_opt import BayesianOptimization
@@ -60,9 +60,9 @@ def evaluate_loader(net, device, criterion, dataloader, args):
 
 			if criterion[1] is not None:
 				loss += 0.2*criterion[1](outputs[1], data[2].to(device)).item()
-				loss += criterion[0](outputs[0], masks).item()
+				loss += criterion[0](outputs[0], masks, weight = args.wlovasz).item()
 			else:
-				loss += criterion[0](outputs, masks).item()
+				loss += criterion[0](outputs, masks, weight = args.wlovasz).item()
 						   
 			res = evaluate_batch(data, outputs, args)
 			dice, other = dice+res[0], other + res[1]
@@ -108,7 +108,7 @@ def train_net(net, criterion, optimizer, device, args, LOG_FILE, MODEL_FILE):
 				if args.output == 0:
 					loss = criterion_seg(outputs, masks)
 				elif args.output == 1 or args.output == 2:
-					loss = criterion_seg(outputs[0], masks) + 0.2 * criterion_other(outputs[1], labels)
+					loss = criterion_seg(outputs[0], masks, weight = args.wlovasz) + 0.2 * criterion_other(outputs[1], labels)
 				loss.backward()
 				optimizer.step()
 				optimizer.zero_grad()
@@ -120,7 +120,7 @@ def train_net(net, criterion, optimizer, device, args, LOG_FILE, MODEL_FILE):
 				if args.output == 0:
 					loss = criterion_seg(outputs, masks)/acc_step
 				elif args.output == 1 or args.output == 2:
-					loss = (criterion_seg(outputs[0], masks) + 0.2 * criterion_other(outputs[1], labels))/acc_step 
+					loss = (criterion_seg(outputs[0], masks, weight = args.wlovasz) + 0.2 * criterion_other(outputs[1], labels))/acc_step 
 				loss.backward()
 				if (i+1)%acc_step == 0:
 					optimizer.step()
@@ -183,6 +183,7 @@ if __name__ == '__main__':
 	parser.add_argument('-l','--load_mod',action = 'store_true',  default = False,   help = 'Load a pre-trained model')
 	parser.add_argument('-t','--test_run',action = 'store_true',  default = False,   help = 'Run the script quickly to check all functions')
 	
+	parser.add_argument('--wlovasz',     type = float,default = 0.2,        help = 'The weight used in Lovasz loss')
 	parser.add_argument('--augment',     type = int,  default = 0,          help = 'The type of train augmentations: 0 vanilla, 1 add contrast, 2 add  ')
 	parser.add_argument('--loss',        type = int,  default = 0,          help = 'The loss: 0 BCE vanilla; 1 wbce+dice; 2 wbce+lovasz.')
 	parser.add_argument('--sch',         type = int,  default = 0,          help = 'The schedule of the learning rate: 0 step; 1 cosine annealing; 2 cosine annealing with warmup.')	
@@ -209,7 +210,7 @@ if __name__ == '__main__':
 	TRAIN_MASKS = '../input/severstal-steel-defect-detection/train.csv'
 	
 	# ouput folder paths
-	dicSpec = {'m_':args.model, 'e_':args.epoch, 't_':int(args.test_run), 'sch_':args.sch, 'loss_':args.loss, 'out_':args.output, 'seed_':args.seed}
+	dicSpec = {'m_':args.model, 'e_':args.epoch, 'wl_':int(100*args.wlovasz), 'sch_':args.sch, 'loss_':args.loss, 'out_':args.output, 'seed_':args.seed}
 	strSpec = '_'.join(key+str(val) for key,val in dicSpec.items())
 	
 	VALID_ID_FILE = '../output/validID_{:s}.csv'.format(strSpec)
@@ -310,9 +311,17 @@ if __name__ == '__main__':
 
 	########################################################################
 	# Augmentations
-	if args.augment == 0 or args.augment == 2:
+	if args.augment == 0:
 		augment_train = Compose([
 			Flip(p=0.5),   # Flip vertically or horizontally or both
+			ShiftScaleRotate(rotate_limit = 10, p = 0.3), 
+			Normalize(mean = (train_mean, train_mean, train_mean), std  = (train_std, train_std, train_std)),
+			ToFloat(max_value=1.)
+		 ],p=1)
+	elif args.augment == 2:
+		augment_train = Compose([
+			Flip(p=0.5),   # Flip vertically or horizontally or both
+			RandomBrightnessContrast(p = 0.3),
 			ShiftScaleRotate(rotate_limit = 10, p = 0.3),
 			Normalize(mean = (train_mean, train_mean, train_mean), std  = (train_std, train_std, train_std)),
 			ToFloat(max_value=1.)

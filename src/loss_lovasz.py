@@ -73,7 +73,7 @@ def iou(preds, labels, C, EMPTY=1., ignore=None, per_image=False):
 # --------------------------- BINARY LOSSES ---------------------------
 
 
-def lovasz_hinge(logits, labels, per_image=True, ignore=None):
+def lovasz_hinge(logits, labels, weight, per_image=True, ignore=None):
     """
     Binary Lovasz hinge loss
       logits: [B, H, W] Variable, logits at each pixel (between -\infty and +\infty)
@@ -82,14 +82,14 @@ def lovasz_hinge(logits, labels, per_image=True, ignore=None):
       ignore: void class id
     """
     if per_image:
-        loss = mean(lovasz_hinge_flat(*flatten_binary_scores(log.unsqueeze(0), lab.unsqueeze(0), ignore))
+        loss = mean(lovasz_hinge_flat(*flatten_binary_scores(log.unsqueeze(0), lab.unsqueeze(0), ignore), weight)
                           for log, lab in zip(logits, labels))
     else:
-        loss = lovasz_hinge_flat(*flatten_binary_scores(logits, labels, ignore))
+        loss = lovasz_hinge_flat(*flatten_binary_scores(logits, labels, ignore), weight)
     return loss
 
 
-def lovasz_hinge_flat(logits, labels):
+def lovasz_hinge_flat(logits, labels, weight = 0.2):
     """
     Binary Lovasz hinge loss
       logits: [P] Variable, logits at each prediction (between -\infty and +\infty)
@@ -105,10 +105,10 @@ def lovasz_hinge_flat(logits, labels):
     perm = perm.data
     gt_sorted = labels[perm]
     grad = lovasz_grad(gt_sorted)
-    weight = 1
+    w = 1
     if labels.sum() == 0:
-        weight = 0.2
-    loss = weight*torch.dot(F.relu(errors_sorted), Variable(grad))
+        w = weight
+    loss = w * torch.dot(F.relu(errors_sorted), Variable(grad))
     return loss
 
 

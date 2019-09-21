@@ -7,7 +7,7 @@ from tqdm import tqdm
 from utils import rle2mask
 
 
-def random_crop_shift_pad(image, mask, p = 0.3):
+def random_crop_shift_pad(image, mask, p = 0.4):
 	# randomly crop a part from the image in width direction
 	# randomly shift in the width direction
 	# pad the empty part with zero
@@ -54,7 +54,7 @@ class SteelDataset(Dataset):
 		# augmentations
 		self.augment = augment
 		self.args = args
-	
+		self.augTag = self.augment is not None and len([item for item in self.augment]) > 2 and self.args.augment == 2	
 	
 	def __getitem__(self, idx):
 		'get one image along with its masks on four categories'
@@ -76,7 +76,7 @@ class SteelDataset(Dataset):
 			augmented = self.augment(image = image, mask = mask)
 			image, mask = augmented['image'], augmented['mask']
 			# do additional augmentations for training data set
-			if len([item for item in self.augment]) > 2 and self.args.augment == 2:
+			if self.augTag:
 				image, mask = random_crop_shift_pad(image, mask)
 
 		# do simple normalization
