@@ -81,11 +81,11 @@ class Evaluate:
             
             # using bayes optimize to determine the threshold
             if self.args.output == 0:
-                pbounds = {'thres_seg': (0, 0.7), 'size_seg' : (500, 6000)}
+                pbounds = {'thres_seg': (0.1, 0.7), 'size_seg' : (500, 6000)}
             elif self.args.output == 1:
-                pbounds = {'thres_seg': (0, 0.7), 'size_seg' : (500, 6000), 'thres_oth':(0, 0.7), 'size_oth':(500, 6000)}
+                pbounds = {'thres_seg': (0.1, 0.7), 'size_seg' : (500, 6000), 'thres_oth':(0.1, 0.7), 'size_oth':(500, 6000)}
             elif self.args.output == 2:
-                pbounds = {'thres_seg': (0, 0.7), 'size_seg' : (500, 6000), 'thres_oth':(0, 0.7), 'size_oth':(500, 6000)}
+                pbounds = {'thres_seg': (0.1, 0.7), 'size_seg' : (500, 6000), 'thres_oth':(0.1, 0.7), 'size_oth':(500, 6000)}
             optimizer = BayesianOptimization(f = cal_dice, pbounds = pbounds, random_state = 1)   
             # adjust the bayes opt stage
             if self.args.test_run or self.args.epoch < 5:
