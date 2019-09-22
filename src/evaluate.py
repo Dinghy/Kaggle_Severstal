@@ -91,7 +91,7 @@ class Evaluate:
             if self.args.test_run or self.args.epoch < 5:
                 optimizer.maximize(init_points = 5, n_iter = 1)
             else:
-                optimizer.maximize(init_points = 20, n_iter = 180)
+                optimizer.maximize(init_points = 20, n_iter = 150)
 
             self.dicPara['thres_seg{:d}'.format(category+1)] = optimizer.max['params']['thres_seg']
             self.dicPara['size_seg{:d}'.format(category+1)]  = optimizer.max['params']['size_seg']
