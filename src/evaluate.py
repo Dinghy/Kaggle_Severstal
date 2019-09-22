@@ -81,17 +81,17 @@ class Evaluate:
             
             # using bayes optimize to determine the threshold
             if self.args.output == 0:
-                pbounds = {'thres_seg': (0, 0.7), 'size_seg' : (0, 6000)}
+                pbounds = {'thres_seg': (0, 0.7), 'size_seg' : (500, 6000)}
             elif self.args.output == 1:
-                pbounds = {'thres_seg': (0, 0.7), 'size_seg' : (0, 6000), 'thres_oth':(0, 0.7), 'size_oth':(0, 6000)}
+                pbounds = {'thres_seg': (0, 0.7), 'size_seg' : (500, 6000), 'thres_oth':(0, 0.7), 'size_oth':(500, 6000)}
             elif self.args.output == 2:
-                pbounds = {'thres_seg': (0, 0.7), 'size_seg' : (0, 6000), 'thres_oth':(0, 0.7), 'size_oth':(0, 6000)}
+                pbounds = {'thres_seg': (0, 0.7), 'size_seg' : (500, 6000), 'thres_oth':(0, 0.7), 'size_oth':(500, 6000)}
             optimizer = BayesianOptimization(f = cal_dice, pbounds = pbounds, random_state = 1)   
             # adjust the bayes opt stage
             if self.args.test_run or self.args.epoch < 5:
                 optimizer.maximize(init_points = 5, n_iter = 1)
             else:
-                optimizer.maximize(init_points = 20, n_iter = 130)
+                optimizer.maximize(init_points = 20, n_iter = 180)
 
             self.dicPara['thres_seg{:d}'.format(category+1)] = optimizer.max['params']['thres_seg']
             self.dicPara['size_seg{:d}'.format(category+1)]  = optimizer.max['params']['size_seg']
@@ -189,7 +189,11 @@ class Evaluate:
                         # print(output_thres.shape, output_thres.min(), output_thres.max())
                         dice += dice_metric(label_raw.detach().numpy(), output_thres)
                         # print(ipos, dice)
-                   
+        
+        keys = [key for key in dicPred.keys()]
+        for key in keys:
+            if len(dicPred[key]) == 0:
+                dicPred.pop(key, None)
         return dice, dicPred, dicSubmit
 
 

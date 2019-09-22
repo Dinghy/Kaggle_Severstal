@@ -441,6 +441,7 @@ if __name__ == '__main__':
 
 	########################################################################
 	# optimizer
+	# if args.optim == 'adam':
 	optimizer = optim.Adam(net.parameters(), lr = 0.001)
 	
 	########################################################################
@@ -475,32 +476,36 @@ if __name__ == '__main__':
 	# get all predictions of the validation set: maybe a memory error here.
 	if args.load_mod:
 		# load the best model
-		net.load_state_dict(torch.load(MODEL_FILE))
-		eva = Evaluate(net, device, validloader, args, isTest = False)
-		eva.search_parameter()
-		dice, dicPred, dicSubmit = eva.predict_dataloader()
-		eva.plot_sampled_predict()
+		# net.load_state_dict(torch.load(MODEL_FILE))
+		# eva = Evaluate(net, device, validloader, args, isTest = False)
+		# eva.search_parameter()
+		# dice, dicPred, dicSubmit = eva.predict_dataloader()
+		# eva.plot_sampled_predict()
 
 		# evaluate the prediction
-		sout = '\nFinal Dice {:.3f}\n'.format(dice/len(VALID_FILES)/4) +\
-			'==============Predict===============\n' + \
-			analyze_labels(pd.DataFrame(dicPred)) +\
-			'==============True===============\n' + \
-			analyze_labels(stat_df_valid)
-		print(sout)
-		print2file(sout, LOG_FILE)
-		print2file(' '.join(str(key)+':'+str(val) for key,val in eva.dicPara.items()), LOG_FILE)
+		# sout = '\nFinal Dice {:.3f}\n'.format(dice/len(VALID_FILES)/4) +\
+		#	'==============Predict===============\n' + \
+		#	analyze_labels(pd.DataFrame(dicPred)) +\
+		#	'==============True===============\n' + \
+		#	analyze_labels(stat_df_valid)
+		# print(sout)
+		# print2file(sout, LOG_FILE)
+		# print2file(' '.join(str(key)+':'+str(val) for key,val in eva.dicPara.items()), LOG_FILE)
 	
 		# load swa model
 		net.load_state_dict(torch.load(MODEL_SWA_FILE))
 		eva = Evaluate(net, device, validloader, args, isTest = False)
 		eva.search_parameter()
 		dice, dicPred, dicSubmit = eva.predict_dataloader()
+		eva.plot_sampled_predict()
 	
 		# evaluate the prediction
 		sout = '\n\nFinal SWA Dice {:.3f}\n'.format(dice/len(VALID_FILES)/4) +\
 			'==============SWA Predict===============\n' + \
-                        analyze_labels(pd.DataFrame(dicPred))
+                        analyze_labels(pd.DataFrame(dicPred)) + \
+                        '==============True===============\n' + \
+                        analyze_labels(stat_df_valid)
+		
 		print(sout)
 		print2file(sout, LOG_FILE)
 		print2file(','.join('"'+str(key)+'":'+str(val) for key,val in eva.dicPara.items()), LOG_FILE)
