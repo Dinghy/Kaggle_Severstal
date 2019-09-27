@@ -13,7 +13,14 @@ import torch.nn.functional as F
 import numpy as np
 
 from collections import OrderedDict
+from utils import seed_everything
 
+############################################
+# Efficient Net
+# (None, 128, 800, 144) 2a_expand_activation
+# (None, 64, 400, 192)  3a_expand_activation
+# (None, 32, 200, 336)  4a_expand_activation
+# (None, 16, 100, 960)  6a_expand_activation
 ############################################
 # SENet Encoder
 class SEModule(nn.Module):
@@ -292,6 +299,13 @@ class ResNetEncoder(ResNet):
         del self.fc
 
     def forward(self, x):
+        '''
+        x0, torch.Size([8, 64, 128, 800]) minibatch, channel, height, width
+		x1, torch.Size([8, 64, 64, 400])
+		x2, torch.Size([8, 128, 32, 200])
+		x3, torch.Size([8, 256, 16, 100])
+		x4, torch.Size([8, 512, 8, 50])
+        '''
         x0 = self.conv1(x)
         x0 = self.bn1(x0)
         x0 = self.relu(x0)
@@ -304,6 +318,7 @@ class ResNetEncoder(ResNet):
         x4 = self.layer4(x3)
 
         return [x4, x3, x2, x1, x0]
+
 
     def load_state_dict(self, state_dict, **kwargs):
         state_dict.pop('fc.bias')

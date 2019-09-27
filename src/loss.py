@@ -3,7 +3,8 @@ import torch.nn.functional as F
 import numpy as np
 
 
-from loss_lovasz import lovasz_hinge, lovasz_softmax
+from loss_lovasz import lovasz_hinge, lovasz_softmax, flatten_binary_scores, lovasz_hinge_flat, mean
+
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
@@ -66,11 +67,32 @@ def criterion_lovasz_hinge(logit, truth, weight = 0.2):
     return loss
 
 
+def criterion_wlovasz_hinge(logit, truth, weight = 0.2):
+    '''Lovasz loss for four channels: Need to change the shape of images if it is for other tasks
+       weighted version
+    '''
+    # Category 1: Mean 0.9688, True Area[Neg,0.0000; Pos,0.0127], Pred Dice[Neg,0.9942; Pos,0.5755], Dice Diff[Neg,11.000; Pos,51.791]
+	# Category 2: Mean 0.9913, True Area[Neg,0.0000; Pos,0.0093], Pred Dice[Neg,0.9995; Pos,0.5980], Dice Diff[Neg,1.000; Pos,16.483]
+	# Category 3: Mean 0.8523, True Area[Neg,0.0000; Pos,0.0634], Pred Dice[Neg,0.9596; Pos,0.7055], Dice Diff[Neg,47.000; Pos,250.050]
+	# Category 4: Mean 0.9797, True Area[Neg,0.0000; Pos,0.0870], Pred Dice[Neg,0.9973; Pos,0.7267], Dice Diff[Neg,5.000; Pos,35.806]
+    bn, ch = logit.shape[:2]
+    h, w = 2, 3
+    
+    pos_weight = np.array([1, 1, 1, 1]).astype(np.float32)
+    neg_weight = np.array([0.2, 0.2, 0.1, 0.2]).astype(np.float32)
+    weight = (truth.sum([h, w]) > 0).float() * torch.from_numpy(pos_weight).to(device)+\
+             (truth.sum([h, w]) == 0).float() * torch.from_numpy(neg_weight).to(device)
+    
+    loss = mean(weight[i,j]*lovasz_hinge_flat(*flatten_binary_scores(logit[i,j].unsqueeze(0), truth[i,j].unsqueeze(0))) 
+                   for j in range(ch) for i in range(bn))
+    return loss
+
+
 def criterion_wbce_dice(logit, truth, weight = 0):
 	return criterion_weightedBCE(logit, truth, use_weight = True) + criterion_dice(logit, truth)
 
 
 def criterion_wbce_lovasz(logit, truth, weight):
-	return criterion_weightedBCE(logit, truth, use_weight = True) + criterion_lovasz_hinge(logit, truth, weight)
+	return criterion_weightedBCE(logit, truth, use_weight = True) + criterion_wlovasz_hinge(logit, truth, weight)
 
 
