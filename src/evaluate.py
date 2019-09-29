@@ -43,7 +43,8 @@ class Evaluate:
 
     def search_parameter(self):
         'Bayes opt to determine the threshold for each label'
-        self.net.eval()
+        self.eval_net()
+
         # store the parameters
         self.dicPara = {}
 
@@ -91,7 +92,7 @@ class Evaluate:
             if self.args.test_run or self.args.epoch < 5:
                 optimizer.maximize(init_points = 5, n_iter = 1)
             else:
-                optimizer.maximize(init_points = 20, n_iter = 150)
+                optimizer.maximize(init_points = 50, n_iter = 250)
 
             self.dicPara['thres_seg{:d}'.format(category+1)] = optimizer.max['params']['thres_seg']
             self.dicPara['size_seg{:d}'.format(category+1)]  = optimizer.max['params']['size_seg']
@@ -117,7 +118,17 @@ class Evaluate:
             image_flip = torch.from_numpy(image.copy()).unsqueeze(0).to(self.device)
 
             # obtain the prediction
-            preds = self.net(image_flip.permute(0, 3, 1, 2))
+            if isinstance(self.net, list):
+                preds = None
+                for net in self.net:
+                    if preds is None:
+                        preds = net(image_flip.permute(0, 3, 1, 2))
+                    else:
+                        preds += net(image_flip.permute(0, 3, 1, 2))
+                preds /= len(self.net)
+            else:
+                preds = self.net(image_flip.permute(0, 3, 1, 2))
+            
             if self.args.output == 0:   # vanilla
                 outputs = torch.sigmoid(preds).permute(0, 2, 3, 1).detach().cpu().numpy()[0]
             elif self.args.output == 1: # regression
@@ -136,6 +147,15 @@ class Evaluate:
             output_merge += outputs/4
         return output_merge, output_other[0]
 
+    
+    def eval_net(self):
+        if isinstance(self.net, list):
+            for net in self.net:
+                net.eval()
+        else:
+            self.net.eval()
+        return
+
 
     def predict_dataloader(self, to_rle = False, fnames = None):
         if self.dicPara is None:
@@ -143,8 +163,9 @@ class Evaluate:
 
         if to_rle and fnames is None:
             raise ValueError('File names are not given.')
-
-        self.net.eval()
+        # evaluate the net
+        self.eval_net()
+        
         dicPred = dict()
         for classid in range(self.args.category):
             dicPred['Class '+str(classid+1)] = []
@@ -201,8 +222,9 @@ class Evaluate:
         'plot the sampled results'
         if self.dicPara is None:
             self.search_parameter()
-
-        self.net.eval()
+        
+        # evaluate the net
+        self.eval_net()
         iplot = 0
         fig, axs = plt.subplots(self.args.batch, 2, figsize=(16,16))
         

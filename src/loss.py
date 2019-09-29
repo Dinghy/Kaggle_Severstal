@@ -79,7 +79,7 @@ def criterion_wlovasz_hinge(logit, truth, weight = 0.2):
     h, w = 2, 3
     
     pos_weight = np.array([1, 1, 1, 1]).astype(np.float32)
-    neg_weight = np.array([0.2, 0.2, 0.1, 0.2]).astype(np.float32)
+    neg_weight = np.array([0.2, 0.2, weight, 0.2]).astype(np.float32)
     weight = (truth.sum([h, w]) > 0).float() * torch.from_numpy(pos_weight).to(device)+\
              (truth.sum([h, w]) == 0).float() * torch.from_numpy(neg_weight).to(device)
     
