@@ -257,7 +257,7 @@ def efficientnet(width_coefficient=None, depth_coefficient=None, dropout_rate=0.
         image_size=image_size,
     )
 
-    return blocks_args, global_params. # basic block size, resize size
+    return blocks_args, global_params # basic block size, resize size
 
 
 def get_model_params(model_name, override_params):
@@ -276,9 +276,10 @@ def get_model_params(model_name, override_params):
     return blocks_args, global_params
 
 
-url_map = {
+url_map = {  # 'weights/efficientnet-b4-6ed6700e.pth'
     'efficientnet-b4': 'http://storage.googleapis.com/public-models/efficientnet/efficientnet-b4-6ed6700e.pth',
 }
+
 
 def load_pretrained_weights(model, model_name, load_fc=True):
     """ Loads pretrained weights, and downloads if loading for the first time. """
@@ -291,8 +292,6 @@ def load_pretrained_weights(model, model_name, load_fc=True):
         res = model.load_state_dict(state_dict, strict=False)
         assert str(res.missing_keys) == str(['_fc.weight', '_fc.bias']), 'issue loading pretrained weights'
     print('Loaded pretrained weights for {}'.format(model_name))
-
-
 
 
 class MBConvBlock(nn.Module):
@@ -353,8 +352,10 @@ class MBConvBlock(nn.Module):
         # Expansion and Depthwise Convolution
         x = inputs
         if self._block_args.expand_ratio != 1:
-            x = relu_fn(self._bn0(self._expand_conv(inputs)))
-        x = relu_fn(self._bn1(self._depthwise_conv(x)))
+            xunet = relu_fn(self._bn0(self._expand_conv(inputs)))    
+        else:
+            xunet = x
+        x = relu_fn(self._bn1(self._depthwise_conv(xunet)))
 
         # Squeeze and Excitation
         if self.has_se:
@@ -370,7 +371,7 @@ class MBConvBlock(nn.Module):
             if drop_connect_rate:
                 x = drop_connect(x, p=drop_connect_rate, training=self.training)
             x = x + inputs  # skip connection
-        return x
+        return x, xunet
 
 
 class EfficientNet(nn.Module):
@@ -432,37 +433,28 @@ class EfficientNet(nn.Module):
         self._fc = nn.Linear(out_channels, self._global_params.num_classes)
 
 
-    def extract_features(self, inputs):
+    def forward(self, inputs):
         """ Returns output of the final convolution layer """
 
         # Stem
-        x = relu_fn(self._bn0(self._conv_stem(inputs)))
+        xstem = relu_fn(self._bn0(self._conv_stem(inputs)))
 
         # Blocks
-        print(len(self._blocks))
-        for idx, block in enumerate(self._blocks):
+        ls = [xstem]
+        ls_ids = {2,6,10,22}
+        for idx, block in zip(range(23), self._blocks):
             drop_connect_rate = self._global_params.drop_connect_rate
             if drop_connect_rate:
                 drop_connect_rate *= float(idx) / len(self._blocks)
-            x = block(x, drop_connect_rate=drop_connect_rate)
+            if idx == 0:
+                x, xunet = block(xstem, drop_connect_rate=drop_connect_rate)
+            else:
+                x, xunet = block(x, drop_connect_rate=drop_connect_rate)
 
-        # Head
-        x = relu_fn(self._bn1(self._conv_head(x)))
-        return x
+            if idx in ls_ids:
+                ls.append(xunet)
 
-
-    def forward(self, inputs):
-        """ Calls extract_features to extract features, applies final linear layer, and returns logits. """
-
-        # Convolution layers
-        x = self.extract_features(inputs)
-
-        # Pooling and final linear layer
-        x = F.adaptive_avg_pool2d(x, 1).squeeze(-1).squeeze(-1)
-        if self._dropout:
-            x = F.dropout(x, p=self._dropout, training=self.training)
-        x = self._fc(x)
-        return x
+        return ls[::-1]
 
 
     @classmethod
@@ -494,8 +486,3 @@ class EfficientNet(nn.Module):
         valid_models = ['efficientnet-b'+str(i) for i in range(num_models)]
         if model_name not in valid_models:
             raise ValueError('model_name should be one of: ' + ', '.join(valid_models))
-
-if __name__ == '__main__':
-    model_name = 'efficientnet-b4'
-    model = EfficientNet.from_pretrained(model_name)
-    np.sum(p.numel() for p in model.parameters() if p.requires_grad)

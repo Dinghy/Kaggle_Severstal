@@ -104,48 +104,57 @@ class Evaluate:
 
     def predict_flip(self, image_raw):
         'predict the mask for one simple image'
-        output_merge = np.zeros((self.args.height, self.args.width, self.args.category))
-        output_other = np.zeros((1, self.args.category))
-        
-        for i in range(4):
-            lr, ud = divmod(i, 2)
-            image = image_raw.detach().numpy()
-            if lr == 1: # flip left to right
-                image = np.fliplr(image)
-            if ud == 1: # flip up to down
-                image = np.flipud(image)
-
-            image_flip = torch.from_numpy(image.copy()).unsqueeze(0).to(self.device)
-
-            # obtain the prediction
-            if isinstance(self.net, list):
-                preds = None
-                for net in self.net:
-                    if preds is None:
-                        preds = net(image_flip.permute(0, 3, 1, 2))
-                    else:
-                        preds += net(image_flip.permute(0, 3, 1, 2))
-                preds /= len(self.net)
-            else:
-                preds = self.net(image_flip.permute(0, 3, 1, 2))
             
-            if self.args.output == 0:   # vanilla
-                outputs = torch.sigmoid(preds).permute(0, 2, 3, 1).detach().cpu().numpy()[0]
-            elif self.args.output == 1: # regression
-                outputs = torch.sigmoid(preds[0]).permute(0, 2, 3, 1).detach().cpu().numpy()[0]
-                output_other += preds[1].detach().cpu().numpy()/4
-            elif self.args.output == 2: # classification
-                outputs = torch.sigmoid(preds[0]).permute(0, 2, 3, 1).detach().cpu().numpy()[0]
-                output_other += torch.sigmoid(preds[1]).detach().cpu().numpy()/4
+        def predict_flip_net(net, image_raw):
+            output_merge = np.zeros((self.args.height, self.args.width, self.args.category))
+            output_other = np.zeros((1, self.args.category))
+            # obtain the prediction
+            
+            for i in range(4):
+                lr, ud = divmod(i, 2)
+                image = image_raw.detach().numpy()
+                if lr == 1: # flip left to right
+                    image = np.fliplr(image)
+                if ud == 1: # flip up to down
+                    image = np.flipud(image)
+                # flip the image
+                image_flip = torch.from_numpy(image.copy()).unsqueeze(0).to(self.device)
+                # predict
+                preds = net(image_flip.permute(0, 3, 1, 2))
 
-            # flip the predicted results
-            if lr == 1: # flip the prediction from right to left
-                outputs = np.fliplr(outputs)
-            if ud == 1:
-                outputs = np.flipud(outputs)
-            # merge the result
-            output_merge += outputs/4
-        return output_merge, output_other[0]
+                if self.args.output == 0:   # vanilla
+                    outputs = torch.sigmoid(preds).permute(0, 2, 3, 1).detach().cpu().numpy()[0]
+                elif self.args.output == 1: # regression
+                    outputs = torch.sigmoid(preds[0]).permute(0, 2, 3, 1).detach().cpu().numpy()[0]
+                    output_other += preds[1].detach().cpu().numpy()/4
+                elif self.args.output == 2: # classification
+                    outputs = torch.sigmoid(preds[0]).permute(0, 2, 3, 1).detach().cpu().numpy()[0]
+                    output_other += torch.sigmoid(preds[1]).detach().cpu().numpy()/4
+
+                # flip the predicted results
+                if lr == 1: # flip the prediction from right to left
+                    outputs = np.fliplr(outputs)
+                if ud == 1:
+                    outputs = np.flipud(outputs)
+                    
+                # merge the result
+                output_merge += outputs/4
+            return output_merge, output_other[0]
+        
+        # predict according to the type of models
+        if isinstance(self.net, list):
+            mask, label = None, None
+            # multiple models
+            for net in self.net:
+                if mask is None:
+                    mask, label = predict_flip_net(net, image_raw)  
+                else:
+                    tmpa, tmpb  = predict_flip_net(net, image_raw)
+                    mask, label = mask + tmpa, label + tmpb
+            mask, label = mask/len(self.net), label/len(self.net)
+        else:
+            mask, label = predict_flip_net(net, image_raw)
+        return mask, label
 
     
     def eval_net(self):

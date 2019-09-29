@@ -301,10 +301,10 @@ class ResNetEncoder(ResNet):
     def forward(self, x):
         '''
         x0, torch.Size([8, 64, 128, 800]) minibatch, channel, height, width
-		x1, torch.Size([8, 64, 64, 400])
-		x2, torch.Size([8, 128, 32, 200])
-		x3, torch.Size([8, 256, 16, 100])
-		x4, torch.Size([8, 512, 8, 50])
+        x1, torch.Size([8, 64, 64, 400])
+        x2, torch.Size([8, 128, 32, 200])
+        x3, torch.Size([8, 256, 16, 100])
+        x4, torch.Size([8, 512, 8, 50])
         '''
         x0 = self.conv1(x)
         x0 = self.bn1(x0)
@@ -324,6 +324,8 @@ class ResNetEncoder(ResNet):
         state_dict.pop('fc.bias')
         state_dict.pop('fc.weight')
         super().load_state_dict(state_dict, **kwargs)
+
+
 
 
 pretrained_settings = {}
@@ -353,6 +355,20 @@ pretrained_settings['se_resnet50'] = {
 
 
 def get_encoder(name, encoder_weights = None):
+    '''
+    Resnet
+    x0, torch.Size([8, 64, 128, 800]) minibatch, channel, height, width
+    x1, torch.Size([8, 64, 64, 400])
+    x2, torch.Size([8, 128, 32, 200])
+    x3, torch.Size([8, 256, 16, 100])
+    x4, torch.Size([8, 512, 8, 50])
+
+    Efficient Net
+    # torch.Size([1, 960, 16, 100])
+    # torch.Size([1, 336, 32, 200])
+    # torch.Size([1, 192, 64, 400])
+    # torch.Size([1, 144, 128, 800])
+    '''
     encoders = {
         'resnet34': {
             'encoder': ResNetEncoder,
@@ -361,8 +377,8 @@ def get_encoder(name, encoder_weights = None):
             'params': {
                 'block': BasicBlock,
                 'layers': [3, 4, 6, 3],
+                },
             },
-        },
         'se_resnet50': {
             'encoder': SENetEncoder,
             'pretrained_settings': pretrained_settings['se_resnet50'],
@@ -378,16 +394,25 @@ def get_encoder(name, encoder_weights = None):
                 'input_3x3': False,
                 'num_classes': 1000,
                 'reduction': 16
+                },
         },
-    },
     }
-    Encoder = encoders[name]['encoder']
-    encoder = Encoder(**encoders[name]['params'])
-    encoder.out_shapes = encoders[name]['out_shapes']
 
-    if encoder_weights is not None:
-        settings = encoders[name]['pretrained_settings'][encoder_weights]
-        encoder.load_state_dict(torch.load(settings['path']))
+    if name == 'efficientnetb4':
+
+        model_name = 'efficientnet-b4'
+        encoder = EfficientNet.from_pretrained(model_name)
+        encoder.out_shapes = encoders[name]['out_shapes']
+
+    else:
+
+        Encoder = encoders[name]['encoder']
+        encoder = Encoder(**encoders[name]['params'])
+        encoder.out_shapes = encoders[name]['out_shapes']
+
+        if encoder_weights is not None:
+            settings = encoders[name]['pretrained_settings'][encoder_weights]
+            encoder.load_state_dict(torch.load(settings['path']))
     return encoder
 
 ###########################################################
