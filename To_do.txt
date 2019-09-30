@@ -1,0 +1,83 @@
+To do list
+
+
+1) Sampler
+
+Ref. : https://github.com/sneddy/pneumothorax-segmentation/blob/master/unet_pipeline/Pneumadataset.py
+
+Codes:
+
+from torch.utils.data.sampler import Sampler
+class PneumoSampler(Sampler):
+    def __init__(self, folds_distr_path, fold_index, demand_non_empty_proba):
+        assert demand_non_empty_proba > 0, 'frequensy of non-empty images must be greater then zero'
+        self.fold_index = fold_index
+        self.positive_proba = demand_non_empty_proba
+        
+        self.folds = pd.read_csv(folds_distr_path)
+        self.folds.fold = self.folds.fold.astype(str)
+        self.folds = self.folds[self.folds.fold != fold_index].reset_index(drop=True)
+
+        self.positive_idxs = self.folds[self.folds.exist_labels == 1].index.values
+        self.negative_idxs = self.folds[self.folds.exist_labels == 0].index.values
+
+        self.n_positive = self.positive_idxs.shape[0]
+        self.n_negative = int(self.n_positive * (1 - self.positive_proba) / self.positive_proba)
+        
+    def __iter__(self):
+        negative_sample = np.random.choice(self.negative_idxs, size=self.n_negative)
+        shuffled = np.random.permutation(np.hstack((negative_sample, self.positive_idxs)))
+        return iter(shuffled.tolist())
+
+    def __len__(self):
+        return self.n_positive + self.n_negative
+
+train_sampler = PneumoSampler(folds_distr_path, fold_id, non_empty_mask_proba)
+if use_sampler:
+    train_dataloader =  DataLoader(
+        dataset=train_dataset, batch_size=batch_size,   
+        num_workers=num_workers, sampler=train_sampler
+    )
+
+
+2) Triplet post processing
+
+Ref. : https://github.com/sneddy/pneumothorax-segmentation/blob/master/unet_pipeline/TripletSubmit.py
+
+Codes:
+
+def apply_thresholds(mask, n_objects, area_threshold, top_score_threshold, 
+                     bottom_score_threshold, leak_score_threshold, use_contours, min_contour_area):
+    if n_objects == 1:
+        crazy_mask = (mask > top_score_threshold).astype(np.uint8)
+        if crazy_mask.sum() < area_threshold: 
+            return -1
+        mask = (mask > bottom_score_threshold).astype(np.uint8)
+    else:
+        mask = (mask > leak_score_threshold).astype(np.uint8)
+
+    if min_contour_area > 0:
+        choosen = remove_smallest(mask, min_contour_area)
+    elif use_contours:
+        choosen = extract_largest(mask, n_objects)
+    else:
+        choosen = mask * 255
+
+    if mask.shape[0] == 1024:
+        reshaped_mask = choosen
+    else:
+        reshaped_mask = cv2.resize(
+            choosen,
+            dsize=(1024, 1024),
+            interpolation=cv2.INTER_LINEAR
+        )
+    reshaped_mask = (reshaped_mask > 127).astype(int) * 255
+    return mask2rle(reshaped_mask.T, 1024, 1024)
+
+
+
+
+
+0.9709   |  3.797e+0 |  502.5    |  0.5897   |  0.4317
+0.9915   |  501.1    |  1.321e+0 |  0.4375   |  0.487
+
