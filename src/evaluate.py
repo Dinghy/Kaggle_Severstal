@@ -60,6 +60,7 @@ class Evaluate:
             return dice/len(preds)
 
         preds, trues, others = [], [], []
+        bfirst = True
         for category in range(4):
             ipos = 0
             # get the prediction and save it
@@ -70,7 +71,7 @@ class Evaluate:
                         # flip and predict
                         output_merge, output_other = self.predict_flip(image_raw)
                         true_mask = label_raw[:,:,category].detach().numpy().astype(int)
-                        if category == 0:
+                        if bfirst:
                             trues.append(mask2rle(true_mask))
                             preds.append(output_merge[:,:,category])
                             others.append(output_other[category])
@@ -79,6 +80,7 @@ class Evaluate:
                             preds[ipos] = output_merge[:,:,category]
                             others[ipos] = output_other[category]
                         ipos += 1
+            bfirst = False
             
             # using bayes optimize to determine the threshold
             if self.args.output == 0:
@@ -92,7 +94,7 @@ class Evaluate:
             if self.args.test_run or self.args.epoch < 5:
                 optimizer.maximize(init_points = 5, n_iter = 1)
             else:
-                optimizer.maximize(init_points = 50, n_iter = 250)
+                optimizer.maximize(init_points = 50, n_iter = 120)
 
             self.dicPara['thres_seg{:d}'.format(category+1)] = optimizer.max['params']['thres_seg']
             self.dicPara['size_seg{:d}'.format(category+1)]  = optimizer.max['params']['size_seg']
@@ -153,7 +155,7 @@ class Evaluate:
                     mask, label = mask + tmpa, label + tmpb
             mask, label = mask/len(self.net), label/len(self.net)
         else:
-            mask, label = predict_flip_net(net, image_raw)
+            mask, label = predict_flip_net(self.net, image_raw)
         return mask, label
 
     

@@ -375,7 +375,7 @@ if __name__ == '__main__':
 		raise NotImplementedError
 	
 	nets = []
-	for seed in range(1234, 1239):
+	for seed in range(1234, 1237):
 		dicSpec = {'m_':args.model, 'e_':args.epoch, 'wl_':int(100*args.wlovasz), 'sch_':args.sch, 'loss_':args.loss, 'out_':args.output, 'seed_':seed}
 		strSpec = '_'.join(key+str(val) for key,val in dicSpec.items())
 		MODEL_SWA_FILE= '../output/model_swa_{:s}.pth'.format(strSpec)
