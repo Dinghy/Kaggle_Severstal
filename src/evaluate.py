@@ -43,7 +43,9 @@ class Evaluate:
         self.dataloader = dataloader
         self.dicPara = dicPara
         self.isTest = isTest
-
+        
+        self.output_mask = np.zeros((self.args.height, self.args.width, self.args.category))
+        self.output_label = np.zeros((1, self.args.category))
 
     def search_parameter(self):
         'Bayes opt to determine the threshold for each label'
@@ -98,7 +100,7 @@ class Evaluate:
             if self.args.test_run or self.args.epoch < 5:
                 optimizer.maximize(init_points = 5, n_iter = 1)
             else:
-                optimizer.maximize(init_points = 50, n_iter = 120)
+                optimizer.maximize(init_points = 5, n_iter = 1)
 
             self.dicPara['thres_seg{:d}'.format(category+1)] = optimizer.max['params']['thres_seg']
             self.dicPara['size_seg{:d}'.format(category+1)]  = optimizer.max['params']['size_seg']
@@ -110,11 +112,12 @@ class Evaluate:
 
     def predict_flip(self, image_raw):
         'predict the mask for one simple image'
-
-        output_mask = np.zeros((self.args.height, self.args.width, self.args.category))
-        output_label = np.zeros((1, self.args.category))
-        # obtain the prediction
         
+        # clean the data
+        self.output_mask *= 0  # np.zeros((self.args.height, self.args.width, self.args.category))
+        self.output_label *= 0 #  np.zeros((1, self.args.category))
+        
+        # obtain the prediction
         for net in self.net:
             for i in range(4):
                 lr, ud = divmod(i, 2)
@@ -132,10 +135,10 @@ class Evaluate:
                     outputs = torch.sigmoid(preds).permute(0, 2, 3, 1).detach().cpu().numpy()[0]
                 elif self.args.output == 1: # regression
                     outputs = torch.sigmoid(preds[0]).permute(0, 2, 3, 1).detach().cpu().numpy()[0]
-                    output_label += preds[1].detach().cpu().numpy()
+                    self.output_label += preds[1].detach().cpu().numpy()
                 elif self.args.output == 2: # classification
                     outputs = torch.sigmoid(preds[0]).permute(0, 2, 3, 1).detach().cpu().numpy()[0]
-                    output_label += torch.sigmoid(preds[1]).detach().cpu().numpy()
+                    self.output_label += torch.sigmoid(preds[1]).detach().cpu().numpy()
 
                 # flip the predicted results
                 if lr == 1: # flip the prediction from right to left
@@ -144,9 +147,9 @@ class Evaluate:
                     outputs = np.flipud(outputs)
                     
                 # merge the result
-                output_mask += outputs
+                self.output_mask += outputs
 
-        return output_mask/4/len(self.net), output_label[0]/4/len(self.net)
+        return self.output_mask/4/len(self.net), self.output_label[0]/4/len(self.net)
 
     
     def eval_net(self):
