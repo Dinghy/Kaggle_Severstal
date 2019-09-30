@@ -1,0 +1,72 @@
+m_resnet34_e_40_t_0_sch_1_loss_2_out_2_seed_1234
+======== Validation Stat ==========
+Four labels ratio (1~4): 0.061,0.020,0.422,0.065
+Label Num (Zero labels~four Labels): 941,997,73,0,0
+Label ratio (Zero labels~four Labels): 0.4679,0.4958,0.0363,0.0000,0.0000
+
+Train/Test 12568/1801
+Train mean/std 0.000/1.000
+Test mean/std 0.000/1.000
+Train num/sample 10557../input/severstal-steel-defect-detection/train_images/0002cc93b.jpg ../input/severstal-steel-defect-detection/train_images/000418bfc.jpg
+Valid num/sample 2011../input/severstal-steel-defect-detection/train_images/9a1f7c238.jpg ../input/severstal-steel-defect-detection/train_images/c6d849ce2.jpg
+
+Epoch 0 :Train_loss:0.888 Train_dice:0.544 Train_other:0.834 Valid_loss:0.524 Valid_dice:0.782 Valid_other:0.867
+Epoch 1 :Train_loss:0.447 Train_dice:0.798 Train_other:0.895 Valid_loss:0.379 Valid_dice:0.874 Valid_other:0.921
+Epoch 2 :Train_loss:0.376 Train_dice:0.839 Train_other:0.903 Valid_loss:0.338 Valid_dice:0.879 Valid_other:0.917
+Epoch 3 :Train_loss:0.339 Train_dice:0.850 Train_other:0.921 Valid_loss:0.320 Valid_dice:0.890 Valid_other:0.884
+Epoch 4 :Train_loss:0.307 Train_dice:0.870 Train_other:0.936 Valid_loss:0.281 Valid_dice:0.889 Valid_other:0.949
+Epoch 5 :Train_loss:0.290 Train_dice:0.876 Train_other:0.940 Valid_loss:0.262 Valid_dice:0.901 Valid_other:0.939
+Epoch 6 :Train_loss:0.272 Train_dice:0.891 Train_other:0.947 Valid_loss:0.247 Valid_dice:0.914 Valid_other:0.955
+Epoch 7 :Train_loss:0.258 Train_dice:0.900 Train_other:0.953 Valid_loss:0.247 Valid_dice:0.914 Valid_other:0.927
+Epoch 8 :Train_loss:0.249 Train_dice:0.904 Train_other:0.953 Valid_loss:0.232 Valid_dice:0.918 Valid_other:0.958
+Epoch 9 :Train_loss:0.240 Train_dice:0.911 Train_other:0.958 Valid_loss:0.227 Valid_dice:0.911 Valid_other:0.969
+Epoch 10 :Train_loss:0.235 Train_dice:0.911 Train_other:0.960 Valid_loss:0.218 Valid_dice:0.919 Valid_other:0.968
+Epoch 11 :Train_loss:0.229 Train_dice:0.910 Train_other:0.963 Valid_loss:0.223 Valid_dice:0.905 Valid_other:0.956
+Epoch 12 :Train_loss:0.224 Train_dice:0.911 Train_other:0.961 Valid_loss:0.227 Valid_dice:0.926 Valid_other:0.963
+Epoch 13 :Train_loss:0.219 Train_dice:0.917 Train_other:0.964 Valid_loss:0.226 Valid_dice:0.917 Valid_other:0.959
+Epoch 14 :Train_loss:0.212 Train_dice:0.918 Train_other:0.966 Valid_loss:0.213 Valid_dice:0.911 Valid_other:0.968
+Epoch 15 :Train_loss:0.207 Train_dice:0.920 Train_other:0.968 Valid_loss:0.209 Valid_dice:0.920 Valid_other:0.967
+Epoch 16 :Train_loss:0.204 Train_dice:0.922 Train_other:0.968 Valid_loss:0.207 Valid_dice:0.921 Valid_other:0.969
+Epoch 17 :Train_loss:0.199 Train_dice:0.925 Train_other:0.969 Valid_loss:0.224 Valid_dice:0.932 Valid_other:0.971
+Epoch 18 :Train_loss:0.200 Train_dice:0.923 Train_other:0.967 Valid_loss:0.195 Valid_dice:0.927 Valid_other:0.964
+Epoch 19 :Train_loss:0.193 Train_dice:0.927 Train_other:0.970 Valid_loss:0.199 Valid_dice:0.928 Valid_other:0.973
+Epoch 20 :Train_loss:0.174 Train_dice:0.938 Train_other:0.978 Valid_loss:0.174 Valid_dice:0.939 Valid_other:0.978
+Epoch 21 :Train_loss:0.167 Train_dice:0.941 Train_other:0.981 Valid_loss:0.176 Valid_dice:0.938 Valid_other:0.979
+Epoch 22 :Train_loss:0.166 Train_dice:0.940 Train_other:0.980 Valid_loss:0.176 Valid_dice:0.937 Valid_other:0.977
+Epoch 23 :Train_loss:0.166 Train_dice:0.940 Train_other:0.981 Valid_loss:0.174 Valid_dice:0.942 Valid_other:0.979
+Epoch 24 :Train_loss:0.162 Train_dice:0.943 Train_other:0.982 Valid_loss:0.167 Valid_dice:0.944 Valid_other:0.980
+Epoch 25 :Train_loss:0.165 Train_dice:0.942 Train_other:0.981 Valid_loss:0.182 Valid_dice:0.929 Valid_other:0.972
+Epoch 26 :Train_loss:0.164 Train_dice:0.942 Train_other:0.981 Valid_loss:0.171 Valid_dice:0.937 Valid_other:0.978
+Epoch 27 :Train_loss:0.162 Train_dice:0.943 Train_other:0.981 Valid_loss:0.173 Valid_dice:0.937 Valid_other:0.977
+Epoch 28 :Train_loss:0.161 Train_dice:0.944 Train_other:0.982 Valid_loss:0.174 Valid_dice:0.938 Valid_other:0.979
+Epoch 29 :Train_loss:0.162 Train_dice:0.942 Train_other:0.981 Valid_loss:0.179 Valid_dice:0.933 Valid_other:0.974
+Epoch 30 :Train_loss:0.150 Train_dice:0.948 Train_other:0.985 Valid_loss:0.165 Valid_dice:0.942 Valid_other:0.980
+Epoch 31 :Train_loss:0.145 Train_dice:0.950 Train_other:0.987 Valid_loss:0.162 Valid_dice:0.946 Valid_other:0.983
+Epoch 32 :Train_loss:0.144 Train_dice:0.952 Train_other:0.988 Valid_loss:0.162 Valid_dice:0.945 Valid_other:0.982
+Epoch 33 :Train_loss:0.142 Train_dice:0.952 Train_other:0.988 Valid_loss:0.164 Valid_dice:0.946 Valid_other:0.982
+Epoch 34 :Train_loss:0.141 Train_dice:0.952 Train_other:0.988 Valid_loss:0.162 Valid_dice:0.947 Valid_other:0.984
+Epoch 35 :Train_loss:0.141 Train_dice:0.951 Train_other:0.988 Valid_loss:0.163 Valid_dice:0.946 Valid_other:0.985
+Epoch 36 :Train_loss:0.141 Train_dice:0.952 Train_other:0.988 Valid_loss:0.170 Valid_dice:0.941 Valid_other:0.979
+Epoch 37 :Train_loss:0.139 Train_dice:0.953 Train_other:0.988 Valid_loss:0.163 Valid_dice:0.946 Valid_other:0.983
+Epoch 38 :Train_loss:0.139 Train_dice:0.953 Train_other:0.988 Valid_loss:0.166 Valid_dice:0.944 Valid_other:0.981
+Epoch 39 :Train_loss:0.139 Train_dice:0.953 Train_other:0.988 Valid_loss:0.158 Valid_dice:0.948 Valid_other:0.983======== Validation Stat ==========
+Four labels ratio (1~4): 0.061,0.020,0.422,0.065
+Label Num (Zero labels~four Labels): 941,997,73,0,0
+Label ratio (Zero labels~four Labels): 0.4679,0.4958,0.0363,0.0000,0.0000
+
+Train/Test 12568/1801
+Train mean/std 0.000/1.000
+Test mean/std 0.000/1.000
+Train num/sample 10557../input/severstal-steel-defect-detection/train_images/0002cc93b.jpg ../input/severstal-steel-defect-detection/train_images/000418bfc.jpg
+Valid num/sample 2011../input/severstal-steel-defect-detection/train_images/9a1f7c238.jpg ../input/severstal-steel-defect-detection/train_images/c6d849ce2.jpg
+
+Final Dice 0.950
+==============Predict===============
+Four labels ratio (1~4): 0.057,0.019,0.394,0.055
+Label Num (Zero labels~four Labels): 1033,902,76,0,0
+Label ratio (Zero labels~four Labels): 0.5137,0.4485,0.0378,0.0000,0.0000
+==============True===============
+Four labels ratio (1~4): 0.061,0.020,0.422,0.065
+Label Num (Zero labels~four Labels): 941,997,73,0,0
+Label ratio (Zero labels~four Labels): 0.4679,0.4958,0.0363,0.0000,0.0000
+thres_seg1:0.3328325097321373 size_seg1:1000.7773907935232 thres_oth1:0.3814396957042769 size_oth1:5406.874481413178 thres_seg2:0.34328204044904165 size_seg2:1003.0988948348687 thres_oth2:0.5840698752260615 size_oth2:2264.109694618857 thres_seg3:0.4250641341749417 size_seg3:1359.9044806031438 thres_oth3:0.4170893570218951 size_oth3:3491.173879965376 thres_seg4:0.45599055547546613 size_seg4:5252.070792339903 thres_oth4:0.009799010162137288 size_oth4:3165.9380971984424

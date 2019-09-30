@@ -1,0 +1,69 @@
+Experiment log
+
+1. Settings: Change the weights of empty masks in Lovasz loss
+		[0.01, 0.05, 0.1, 0.2, 0.4]
+   Results : 
+   			 0.01 Valid_dice:0.822 Valid_other:0.978
+   			 0.05 Valid_dice:0.919 Valid_other:0.979
+   			 0.1  Valid_dice:0.923 Valid_other:0.977
+   			 0.2  Valid_dice:0.937 Valid_other:0.978
+   			 0.4  Valid_dice:0.905 Valid_other:0.970
+
+
+2. Settings: Change loss and optimization scheme
+   Results :
+   		==============True===============
+		Four labels ratio (1~4): 0.061,0.020,0.422,0.065
+
+    1) wbce+dice  step down
+
+   		Final SWA Dice 0.945
+		==============SWA Predict===============
+		Four labels ratio (1~4): 0.056,0.018,0.413,0.061
+   		Category 1: Mean 0.9649, True Area[Neg,0.0000; Pos,0.0127], Pred Dice[Neg,0.9942; Pos,0.5116], Dice Diff[Neg,11.000; Pos,59.586]
+		Category 2: Mean 0.9902, True Area[Neg,0.0000; Pos,0.0093], Pred Dice[Neg,0.9990; Pos,0.5704], Dice Diff[Neg,2.000; Pos,17.613]
+		Category 3: Mean 0.8440, True Area[Neg,0.0000; Pos,0.0634], Pred Dice[Neg,0.9630; Pos,0.6811], Dice Diff[Neg,43.000; Pos,270.757]
+		Category 4: Mean 0.9794, True Area[Neg,0.0000; Pos,0.0870], Pred Dice[Neg,0.9984; Pos,0.7060], Dice Diff[Neg,3.000; Pos,38.519]
+    
+    2) wbce+dice cosine anealing
+
+    	Final SWA Dice 0.945
+		==============SWA Predict===============
+		Four labels ratio (1~4): 0.060,0.018,0.425,0.058
+    	Category 1: Mean 0.9655, True Area[Neg,0.0000; Pos,0.0127], Pred Dice[Neg,0.9921; Pos,0.5542], Dice Diff[Neg,15.000; Pos,54.382]
+		Category 2: Mean 0.9911, True Area[Neg,0.0000; Pos,0.0093], Pred Dice[Neg,0.9995; Pos,0.5859], Dice Diff[Neg,1.000; Pos,16.977]
+		Category 3: Mean 0.8449, True Area[Neg,0.0000; Pos,0.0634], Pred Dice[Neg,0.9544; Pos,0.6950], Dice Diff[Neg,53.000; Pos,258.918]
+		Category 4: Mean 0.9785, True Area[Neg,0.0000; Pos,0.0870], Pred Dice[Neg,0.9989; Pos,0.6851], Dice Diff[Neg,2.000; Pos,41.256]
+
+	3) wbce+lovasz(0.2) step down
+		
+		Final SWA Dice 0.948
+		==============SWA Predict===============
+		Four labels ratio (1~4): 0.055,0.019,0.418,0.061
+		Category 1: Mean 0.9676, True Area[Neg,0.0000; Pos,0.0127], Pred Dice[Neg,0.9942; Pos,0.5556], Dice Diff[Neg,11.000; Pos,54.218]
+		Category 2: Mean 0.9917, True Area[Neg,0.0000; Pos,0.0093], Pred Dice[Neg,0.9990; Pos,0.6418], Dice Diff[Neg,2.000; Pos,14.684]
+		Category 3: Mean 0.8518, True Area[Neg,0.0000; Pos,0.0634], Pred Dice[Neg,0.9613; Pos,0.7021], Dice Diff[Neg,45.000; Pos,252.951]
+		Category 4: Mean 0.9800, True Area[Neg,0.0000; Pos,0.0870], Pred Dice[Neg,0.9984; Pos,0.7155], Dice Diff[Neg,3.000; Pos,37.275]
+
+	4) wbce+lovasz(0.2) cosine annealing
+
+		Final SWA Dice 0.948
+		==============SWA Predict===============
+		Four labels ratio (1~4): 0.059,0.018,0.420,0.063
+		Category 1: Mean 0.9688, True Area[Neg,0.0000; Pos,0.0127], Pred Dice[Neg,0.9942; Pos,0.5755], Dice Diff[Neg,11.000; Pos,51.791]
+		Category 2: Mean 0.9913, True Area[Neg,0.0000; Pos,0.0093], Pred Dice[Neg,0.9995; Pos,0.5980], Dice Diff[Neg,1.000; Pos,16.483]
+		Category 3: Mean 0.8523, True Area[Neg,0.0000; Pos,0.0634], Pred Dice[Neg,0.9596; Pos,0.7055], Dice Diff[Neg,47.000; Pos,250.050]
+		Category 4: Mean 0.9797, True Area[Neg,0.0000; Pos,0.0870], Pred Dice[Neg,0.9973; Pos,0.7267], Dice Diff[Neg,5.000; Pos,35.806]
+
+
+		
+Category 1: Mean 0.9697, True Area[Neg,0.0000; Pos,0.0127], Pred Dice[Neg,0.9926; Pos,0.6145], Dice Diff[Neg,14.000; Pos,47.033]
+Category 2: Mean 0.9917, True Area[Neg,0.0000; Pos,0.0093], Pred Dice[Neg,1.0000; Pos,0.5951], Dice Diff[Neg,0.000; Pos,16.603]
+Category 3: Mean 0.8548, True Area[Neg,0.0000; Pos,0.0634], Pred Dice[Neg,0.9656; Pos,0.7032], Dice Diff[Neg,40.000; Pos,251.970]
+Category 4: Mean 0.9812, True Area[Neg,0.0000; Pos,0.0870], Pred Dice[Neg,0.9984; Pos,0.7336], Dice Diff[Neg,3.000; Pos,34.893]
+
+
+
+		
+		
+

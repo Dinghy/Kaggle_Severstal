@@ -34,7 +34,11 @@ class Evaluate:
 
     def __init__(self, net, device, dataloader, args, dicPara = None, isTest = True):
         self.args = args
-        self.net = net
+        if not isinstance(net, list):
+            self.net = [net]
+        else:
+            self.net = net
+
         self.device = device
         self.dataloader = dataloader
         self.dicPara = dicPara
@@ -106,12 +110,12 @@ class Evaluate:
 
     def predict_flip(self, image_raw):
         'predict the mask for one simple image'
-            
-        def predict_flip_net(net, image_raw):
-            output_merge = np.zeros((self.args.height, self.args.width, self.args.category))
-            output_other = np.zeros((1, self.args.category))
-            # obtain the prediction
-            
+
+        output_mask = np.zeros((self.args.height, self.args.width, self.args.category))
+        output_label = np.zeros((1, self.args.category))
+        # obtain the prediction
+        
+        for net in self.net:
             for i in range(4):
                 lr, ud = divmod(i, 2)
                 image = image_raw.detach().numpy()
@@ -128,10 +132,10 @@ class Evaluate:
                     outputs = torch.sigmoid(preds).permute(0, 2, 3, 1).detach().cpu().numpy()[0]
                 elif self.args.output == 1: # regression
                     outputs = torch.sigmoid(preds[0]).permute(0, 2, 3, 1).detach().cpu().numpy()[0]
-                    output_other += preds[1].detach().cpu().numpy()/4
+                    output_label += preds[1].detach().cpu().numpy()
                 elif self.args.output == 2: # classification
                     outputs = torch.sigmoid(preds[0]).permute(0, 2, 3, 1).detach().cpu().numpy()[0]
-                    output_other += torch.sigmoid(preds[1]).detach().cpu().numpy()/4
+                    output_label += torch.sigmoid(preds[1]).detach().cpu().numpy()
 
                 # flip the predicted results
                 if lr == 1: # flip the prediction from right to left
@@ -140,23 +144,9 @@ class Evaluate:
                     outputs = np.flipud(outputs)
                     
                 # merge the result
-                output_merge += outputs/4
-            return output_merge, output_other[0]
-        
-        # predict according to the type of models
-        if isinstance(self.net, list):
-            mask, label = None, None
-            # multiple models
-            for net in self.net:
-                if mask is None:
-                    mask, label = predict_flip_net(net, image_raw)  
-                else:
-                    tmpa, tmpb  = predict_flip_net(net, image_raw)
-                    mask, label = mask + tmpa, label + tmpb
-            mask, label = mask/len(self.net), label/len(self.net)
-        else:
-            mask, label = predict_flip_net(self.net, image_raw)
-        return mask, label
+                output_mask += outputs
+
+        return output_mask/4/len(self.net), output_label[0]/4/len(self.net)
 
     
     def eval_net(self):
