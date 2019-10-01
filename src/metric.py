@@ -25,9 +25,9 @@ def dice_metric(A, B):
 	if len(B.shape) == 3:
 		B = B[np.newaxis,:]
 	# adjust the shape if necessary
-	if A.shape[-1] == 4:
+	if A.shape[-1] <= 4:
 		A = np.moveaxis(A, -1, 1)
-	if B.shape[-1] == 4:
+	if B.shape[-1] <= 4:
 		B = np.moveaxis(B, -1, 1)	
 	# print(A.shape, B.shape)
 	batch_size, channel_num = A.shape[0], A.shape[1]

@@ -301,5 +301,5 @@ class Evaluate:
         try:
             plt.savefig('../output/evaluate_image.png')
         except:
-            plt.savefig('../output/evaluate_image.png')
+            plt.savefig('evaluate_image.png')
         return
