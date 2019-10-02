@@ -40,6 +40,22 @@ def post_process_segment(pred, thres_seg = 0.5, size_seg = 600, thres_after = 0.
     return (pred > thres_after).astype(int)
 
 
+class Meter:
+    def __init__(self):
+        self.value = 0
+        self.num = 0
+
+    def add(self, val):
+        self.value += val
+        self.num += 1
+    
+    def avg(self):
+        if self.num > 0:
+            return self.value/self.num
+        else:
+            return 0
+
+
 class EvaluateOneCategory:
     def __init__(self, net, device, dataloader, args, dicPara = None, isTest = True):
         self.args = args
@@ -80,7 +96,9 @@ class EvaluateOneCategory:
         with torch.no_grad():
             for data in tqdm(self.dataloader):
                 images, labels = data[0], data[1]
-                # flip and predict
+                images = images.permute(0,3,1,2).to(self.device)
+
+		# flip and predict
                 output_masks, output_labels = self.predict_flip_batch(images)
                 # store the prediction
                 for output_mask, label_true in zip(output_masks, labels):
@@ -111,8 +129,8 @@ class EvaluateOneCategory:
     def predict_flip_batch(self, images):
         'Same as predict flip but deal with a batch of images'
         # clean the data
-        self.output_mask = np.zeros((images.shape[0], self.args.height, self.args.width, self.args.category))
-        self.output_label =  np.zeros((images.shape[0], self.args.category))
+        self.output_mask = np.zeros((images.shape[0], self.args.height, self.args.width, 1))
+        self.output_label =  np.zeros((images.shape[0], 1))
 
         # obtain the prediction
         for net in self.net:
@@ -146,7 +164,8 @@ class EvaluateOneCategory:
                     
                 # merge the result
                 self.output_mask += masks.permute(0, 2, 3, 1).detach().cpu().numpy()
-                self.output_label += labels.detach().cpu().numpy()
+                if self.args.output > 0:
+                    self.output_label += labels.detach().cpu().numpy()
 
         return self.output_mask/4/len(self.net), self.output_label/4/len(self.net)
 
@@ -169,9 +188,10 @@ class EvaluateOneCategory:
         # evaluate the net
         self.eval_net()
         
-
+        dice_total, dice_pos, dice_neg = Meter(), Meter(), Meter()
+ 
         dicSubmit = {'ImageId_ClassId':[], 'EncodedPixels':[]}
-        dice, preds = 0.0, []
+        preds = []
         ipos = 0
         def area_ratio(mask):
             return mask.sum()/self.args.height/self.args.width
@@ -191,9 +211,19 @@ class EvaluateOneCategory:
 
                     # calculate the dice if it is not a test dataloader
                     if not self.isTest:
-                        dice += dice_metric(label_raw.detach().cpu().numpy(), output_thres)
+                        dice = dice_metric(label_raw.detach().cpu().numpy(), output_thres)
+                        dice_total.add(dice)
+                        if label_raw.sum() > 0:
+                            dice_pos.add(dice)
+                        else:
+                            dice_neg.add(dice)
         
-        return dice
+        # print information
+        print('Dice total {:.3f}'.format(dice_total.avg()))
+        print('Positive Data {:d}, {:.3f}'.format(dice_pos.num, dice_pos.avg()))
+        print('Negative Data {:d}, {:.3f}'.format(dice_neg.num, dice_neg.avg())) 
+        return dice_total.avg()
+
 
 
 class Evaluate:

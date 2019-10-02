@@ -75,7 +75,7 @@ def evaluate_loader(net, device, criterion, dataloader, args):
 
 # argsparse
 class args:
-    test_run  = False      # do a test run
+    test_run  = True # False      # do a test run
     eda       = True      # run eda from start
     epoch     = 3         # the number of epochs
     augment   = 2         # whether using augmentations 
@@ -129,8 +129,8 @@ nTrain = int(len(TRAIN_FILES_ALL)*0.8)
 TRAIN_FILES = TRAIN_FILES_ALL[:nTrain]
 VALID_FILES = TRAIN_FILES_ALL[nTrain:]
 if args.test_run:
-    TRAIN_FILES = TRAIN_FILES[:100]
-    VALID_FILES = VALID_FILES[:100]
+    TRAIN_FILES = TRAIN_FILES[:32]
+    VALID_FILES = VALID_FILES[:32]
 
 # train
 augment_train = Compose([
@@ -157,7 +157,12 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 net = Unet("resnet34", encoder_weights="imagenet", classes = 1, activation = None, args = args).to(device)
 
 optimizer = optim.Adam(net.parameters(), lr = 0.001)
+
+
+
 criterion = [nn.BCEWithLogitsLoss(), None]
+
+
 
 train_dataset = SteelOneDataset(TRAIN_FILES, args = args, mask_df = mask_df, augment = augment_train, spec_cat = args.spec_cat)
 valid_dataset = SteelOneDataset(VALID_FILES, args = args, mask_df = mask_df, augment = augment_valid, spec_cat = args.spec_cat)
