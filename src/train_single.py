@@ -1,8 +1,3 @@
-
-
-import matplotlib.pyplot as plt
-from tqdm import tqdm
-
 import glob
 import os
 import cv2
@@ -17,10 +12,6 @@ from albumentations import (
     Compose, Flip, HorizontalFlip, Normalize, 
     RandomBrightnessContrast, RandomBrightness, RandomContrast, RandomGamma, OneOf, ToFloat, 
     RandomSizedCrop, ShiftScaleRotate)
-from albumentations import (
-    Compose, Flip, HorizontalFlip, Normalize, 
-    RandomBrightness, RandomContrast, RandomGamma, OneOf, ToFloat, 
-    RandomSizedCrop, ShiftScaleRotate, RandomBrightnessContrast, Lambda)
 import copy
 from bayes_opt import BayesianOptimization
 
@@ -34,18 +25,17 @@ from torch import nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 import sys
-sys.path.insert(0,'../input/severstal-model/')
-from dataset import SteelDataset, SteelOneDataset
+# sys.path.insert(0,'../input/severstal-model/')
+from dataset import BalanceClassSampler, SteelDataset, SteelOneDataset
 from metric import dice_metric
 from utils import mask2rle, rle2mask, plot_mask, analyze_labels, seed_everything, print2file
 from evaluate import Evaluate
 from unet import Unet
 
 
-
 # argsparse
 class args:
-    test_run  = True      # do a test run
+    test_run  = False      # do a test run
     eda       = True      # run eda from start
     epoch     = 3         # the number of epochs
     augment   = 2         # whether using augmentations 
@@ -59,10 +49,13 @@ class args:
     load_mod  = True
     output    = 0
     sch       = 2
-    
-
-
-
+    swa       = 3 
+    spec_cat  = 2
+    wlovasz   = 0.2
+    category  = 1
+    seed      = 1234 
+    loss      = 2
+    sampler   = True
 
 # folder paths
 TRAIN_PATH  = '../input/severstal-steel-defect-detection/train_images/'
@@ -75,15 +68,29 @@ TEST_FILES  = sorted(glob.glob(TEST_PATH+'*.jpg'))
 
 mask_df = pd.read_csv(TRAIN_MASKS).set_index(['ImageId_ClassId']).fillna('-1')                
 
+# ouput folder paths
+dicSpec = {'m_':args.model, 'e_':args.epoch, 'wl_':int(100*args.wlovasz), 'sch_':args.sch, 'loss_':args.loss, 'out_':args.output, 'seed_':args.seed}
+strSpec = '_'.join(key+str(val) for key,val in dicSpec.items())
+	
+VALID_ID_FILE = '../output/validID_{:s}.csv'.format(strSpec)
+MODEL_FILE    = '../output/model_{:s}.pth'.format(strSpec)
+MODEL_SWA_FILE= '../output/model_swa_{:s}.pth'.format(strSpec)
+HISTORY_FILE  = '../output/history_{:s}.csv'.format(strSpec)
+LOG_FILE      = '../output/log_{:s}.txt'.format(strSpec)
+
 # not using sophisticated normalize
 if not args.normalize:
     train_mean, train_std = 0, 1
     test_mean, test_std = 0, 1
     
 # get the train and valid files
+
 nTrain = int(len(TRAIN_FILES_ALL)*0.8)
 TRAIN_FILES = TRAIN_FILES_ALL[:nTrain]
 VALID_FILES = TRAIN_FILES_ALL[nTrain:]
+if args.test_run:
+    TRAIN_FILES = TRAIN_FILES[:100]
+    VALID_FILES = VALID_FILES[:100]
 
 # train
 augment_train = Compose([
@@ -108,7 +115,7 @@ def evaluate_batch(data, outputs, args, threshold = 0.5):
     if args.output == 0:
         masks   = data[1].detach().cpu().numpy()
         pred_masks  = (torch.sigmoid(outputs).detach().cpu().numpy() > threshold).astype(int)
-        print(masks.shape, pred_masks.shape)
+        # print(masks.shape, pred_masks.shape)
         return dice_metric(masks, pred_masks), 0.0
     elif args.output == 1:
         masks   = data[1].detach().cpu().numpy()
@@ -133,11 +140,11 @@ def evaluate_loader(net, device, criterion, dataloader, args):
             masks = masks.permute(0, 3, 1, 2)
             outputs = net(images)
 
-            if criterion[1] is not None:
+            if args.output == 2:
                 loss += 0.2*criterion[1](outputs[1], data[2].to(device)).item()
                 loss += criterion[0](outputs[0], masks, weight = args.wlovasz).item()
-            else:
-                loss += criterion[0](outputs, masks, weight = args.wlovasz).item()
+            elif args.output == 0:
+                loss += criterion[0](outputs, masks).item()
 
             res = evaluate_batch(data, outputs, args)
             dice, other = dice+res[0], other + res[1]
@@ -152,12 +159,19 @@ net = Unet("resnet34", encoder_weights="imagenet", classes = 1, activation = Non
 optimizer = optim.Adam(net.parameters(), lr = 0.001)
 criterion = [nn.BCEWithLogitsLoss(), None]
 
-steel_ds_train = SteelOneDataset(TRAIN_FILES, args = args, mask_df = mask_df, augment = augment_train, spec_cat = 2)
-steel_ds_valid = SteelOneDataset(VALID_FILES, args = args, mask_df = mask_df, augment = augment_valid, spec_cat = 2)
+train_dataset = SteelOneDataset(TRAIN_FILES, args = args, mask_df = mask_df, augment = augment_train, spec_cat = args.spec_cat)
+valid_dataset = SteelOneDataset(VALID_FILES, args = args, mask_df = mask_df, augment = augment_valid, spec_cat = args.spec_cat)
 
 # create the dataloader
-trainloader = torch.utils.data.DataLoader(steel_ds_train, batch_size = args.batch, shuffle = True, num_workers = 4)
-validloader = torch.utils.data.DataLoader(steel_ds_valid, batch_size = args.batch, shuffle = False, num_workers = 4)
+if args.sampler:
+    train_sampler = BalanceClassSampler(train_dataset, len(train_dataset))
+    trainloader = torch.utils.data.DataLoader(train_dataset, 
+                                               batch_size = args.batch, num_workers = 4,
+                                               sampler = train_sampler, drop_last = True,)
+else:
+    trainloader = torch.utils.data.DataLoader(train_dataset, batch_size = args.batch, shuffle = True, num_workers = 4)
+
+validloader = torch.utils.data.DataLoader(valid_dataset, batch_size = args.batch, shuffle = False, num_workers = 4)
 
 # output regression information
 history = {'Train_loss':[], 'Train_dice':[], 'Train_other':[],  'Valid_loss':[], 'Valid_dice':[], 'Valid_other':[]}	
@@ -171,6 +185,7 @@ elif args.sch == 2:
 # criterion
 criterion_seg, criterion_other = criterion[0], criterion[1]
 
+print('Training begin')
 val_dice_best = -float('inf')
 # main iteration
 for epoch in range(args.epoch):  # loop over the dataset multiple times
@@ -251,10 +266,10 @@ for epoch in range(args.epoch):  # loop over the dataset multiple times
     # update the history and output message
     history['Train_loss'].append(running_loss   / len(trainloader))
     history['Valid_loss'].append(val_loss       / len(validloader))
-    history['Train_dice'].append(running_dice   / len(TRAIN_FILES) / args.category) # four categories
-    history['Valid_dice'].append(val_dice       / len(VALID_FILES) / args.category) 
-    history['Train_other'].append(running_other / len(TRAIN_FILES) / args.category)
-    history['Valid_other'].append(val_other     / len(VALID_FILES) / args.category) 
+    history['Train_dice'].append(running_dice   / len(TRAIN_FILES)/args.category) # four categories
+    history['Valid_dice'].append(val_dice       / len(VALID_FILES)/args.category) 
+    history['Train_other'].append(running_other / len(TRAIN_FILES)/args.category)
+    history['Valid_other'].append(val_other     / len(VALID_FILES)/args.category) 
     sout = '\nEpoch {:d} :'.format(epoch)+' '.join(key+':{:.3f}'.format(val[-1]) for key,val in history.items())
     print2file(sout, LOG_FILE)
     print(sout)

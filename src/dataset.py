@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 import pandas as pd
-from torch.utils.data import DataLoader, Dataset, sampler
+from torch.utils.data import DataLoader, Dataset, Sampler
 
 from tqdm import tqdm
 from utils import rle2mask
@@ -123,8 +123,38 @@ class SteelDataset(Dataset):
         return self.stat_df
 
 
+# https://www.kaggle.com/c/siim-acr-pneumothorax-segmentation/discussion/97456
+class BalanceClassSampler(Sampler):
+    def __init__(self, dataset, length=None):
+        self.dataset = dataset
+        if length is None:
+            length = len(self.dataset)
+        self.length = int(length)
+
+        half = self.length // 2 + 1
+        self.pos_length = half
+        self.neg_length = half
+        print('pos num: %s, neg num: %s' % (self.pos_length, self.neg_length))
+
+    def __iter__(self):
+        pos_index = np.where(self.dataset.pos_flag)[0]
+        neg_index = np.where(~self.dataset.pos_flag)[0]
+
+        pos = np.random.choice(pos_index, self.pos_length, replace=True)
+        neg = np.random.choice(neg_index, self.neg_length, replace=True)
+
+        l = np.hstack([pos, neg]).T
+        l = l.reshape(-1)
+        np.random.shuffle(l)
+        l = l[:self.length]
+        return iter(l)
+
+    def __len__(self):
+        return self.length
+
+
 class SteelOneDataset(Dataset):
-	'Only extract the results for a specific category'
+    'Only extract the results for a specific category'
     def __init__(self, fpaths ,args,
                      mask_df  = None,
                      height   = 256,
@@ -145,7 +175,13 @@ class SteelOneDataset(Dataset):
         self.augment = augment
         self.args = args
         self.augTag = self.augment is not None and len([item for item in self.augment]) > 2 and self.args.augment == 2    
-    
+        # obtain the positive flag
+        if mask_df is not None:
+            test = np.array([filepath.split('/')[-1]+'_{:d}'.format(self.spec_cat+1) for filepath in fpaths])
+            self.pos_flag = self.mask_df.loc[test,'EncodedPixels']!='-1'
+        else:
+            self.pos_flag = None
+
     def __getitem__(self, idx):
         'get one image along with its masks on four categories'
         fpath = self.fpaths[idx]
