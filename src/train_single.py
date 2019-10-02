@@ -29,8 +29,48 @@ import sys
 from dataset import BalanceClassSampler, SteelDataset, SteelOneDataset
 from metric import dice_metric
 from utils import mask2rle, rle2mask, plot_mask, analyze_labels, seed_everything, print2file
-from evaluate import Evaluate
+from evaluate import Evaluate, EvaluateOneCategory
 from unet import Unet
+
+
+def evaluate_batch(data, outputs, args, threshold = 0.5):
+    if args.output == 0:
+        masks   = data[1].detach().cpu().numpy()
+        pred_masks  = (torch.sigmoid(outputs).detach().cpu().numpy() > threshold).astype(int)
+        # print(masks.shape, pred_masks.shape)
+        return dice_metric(masks, pred_masks), 0.0
+    elif args.output == 1:
+        masks   = data[1].detach().cpu().numpy()
+        labels  = data[2].detach().cpu().numpy()
+        pred_masks  = (torch.sigmoid(outputs[0]).detach().cpu().numpy() > threshold).astype(int)
+        pred_labels = outputs[1].detach().cpu().numpy()
+        return dice_metric(masks, pred_masks), np.sum(np.sqrt((pred_labels-labels)**2))
+    elif args.output == 2:  # classification
+        masks   = data[1].detach().cpu().numpy()
+        labels  = data[2].detach().cpu().numpy()
+        pred_masks  = (torch.sigmoid(outputs[0]).detach().cpu().numpy() > threshold).astype(int)
+        pred_labels = (torch.sigmoid(outputs[1]).detach().cpu().numpy() > threshold).astype(int)
+        return dice_metric(masks, pred_masks), np.sum((pred_labels == labels).astype(int)) 
+
+
+def evaluate_loader(net, device, criterion, dataloader, args):
+    loss, dice, other = 0.0, 0.0, 0.0
+    with torch.no_grad():
+        for data in dataloader:
+            images, masks = data[0].to(device), data[1].to(device)
+            images = images.permute(0, 3, 1, 2)
+            masks = masks.permute(0, 3, 1, 2)
+            outputs = net(images)
+
+            if args.output == 2:
+                loss += 0.2*criterion[1](outputs[1], data[2].to(device)).item()
+                loss += criterion[0](outputs[0], masks, weight = args.wlovasz).item()
+            elif args.output == 0:
+                loss += criterion[0](outputs, masks).item()
+
+            res = evaluate_batch(data, outputs, args)
+            dice, other = dice+res[0], other + res[1]
+    return loss, dice, other
 
 
 # argsparse
@@ -109,46 +149,6 @@ augment_valid = Compose([
 augment_test = Compose([
     Normalize(mean=(test_mean, test_mean, test_mean), std=(test_std, test_std, test_std)),
     ToFloat(max_value=1.)],p=1)
-
-
-def evaluate_batch(data, outputs, args, threshold = 0.5):
-    if args.output == 0:
-        masks   = data[1].detach().cpu().numpy()
-        pred_masks  = (torch.sigmoid(outputs).detach().cpu().numpy() > threshold).astype(int)
-        # print(masks.shape, pred_masks.shape)
-        return dice_metric(masks, pred_masks), 0.0
-    elif args.output == 1:
-        masks   = data[1].detach().cpu().numpy()
-        labels  = data[2].detach().cpu().numpy()
-        pred_masks  = (torch.sigmoid(outputs[0]).detach().cpu().numpy() > threshold).astype(int)
-        pred_labels = outputs[1].detach().cpu().numpy()
-        return dice_metric(masks, pred_masks), np.sum(np.sqrt((pred_labels-labels)**2))
-    elif args.output == 2:  # classification
-        masks   = data[1].detach().cpu().numpy()
-        labels  = data[2].detach().cpu().numpy()
-        pred_masks  = (torch.sigmoid(outputs[0]).detach().cpu().numpy() > threshold).astype(int)
-        pred_labels = (torch.sigmoid(outputs[1]).detach().cpu().numpy() > threshold).astype(int)
-        return dice_metric(masks, pred_masks), np.sum((pred_labels == labels).astype(int)) 
-
-
-def evaluate_loader(net, device, criterion, dataloader, args):
-    loss, dice, other = 0.0, 0.0, 0.0
-    with torch.no_grad():
-        for data in dataloader:
-            images, masks = data[0].to(device), data[1].to(device)
-            images = images.permute(0, 3, 1, 2)
-            masks = masks.permute(0, 3, 1, 2)
-            outputs = net(images)
-
-            if args.output == 2:
-                loss += 0.2*criterion[1](outputs[1], data[2].to(device)).item()
-                loss += criterion[0](outputs[0], masks, weight = args.wlovasz).item()
-            elif args.output == 0:
-                loss += criterion[0](outputs, masks).item()
-
-            res = evaluate_batch(data, outputs, args)
-            dice, other = dice+res[0], other + res[1]
-    return loss, dice, other
 
 
 # optimizer
@@ -271,7 +271,12 @@ for epoch in range(args.epoch):  # loop over the dataset multiple times
     history['Train_other'].append(running_other / len(TRAIN_FILES)/args.category)
     history['Valid_other'].append(val_other     / len(VALID_FILES)/args.category) 
     sout = '\nEpoch {:d} :'.format(epoch)+' '.join(key+':{:.3f}'.format(val[-1]) for key,val in history.items())
-    print2file(sout, LOG_FILE)
     print(sout)
 
+
+# evaluate
+eva = EvaluateOneCategory(net, device, validloader, args, isTest=False)
+eva.search_parameter()
+dice = eva.predict_dataloader()
+print('Final Dice', dice)
 
