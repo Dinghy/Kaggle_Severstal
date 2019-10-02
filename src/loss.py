@@ -96,3 +96,90 @@ def criterion_wbce_lovasz(logit, truth, weight):
 	return criterion_weightedBCE(logit, truth, use_weight = True) + criterion_wlovasz_hinge(logit, truth, weight)
 
 
+####################. test for single mask #########################
+
+def loss_BCE(logit, truth, weight = 0.5):
+    'Weighted BCE loss'
+    h, w = 2, 3
+    ch = logit.shape[1]  # the number of channels
+    # one channel test
+    if ch == 1:
+        pos_weight, neg_weight = 1./(2*weight), 1./(2*(1-weight))
+        weight = (truth.sum([h, w]) > 0).float() * pos_weight + (truth.sum([h, w]) == 0).float() * neg_weight
+    # multiple channels
+    else:
+        # use weighted function
+        pos_weight = np.array([1./0.4, 1./0.1, 1./0.6, 1./0.4]).astype(np.float32)
+        neg_weight = np.array([1./1.6, 1./1.9, 1./1.4, 1./1.6]).astype(np.float32) 
+
+        weight = (truth.sum([h, w]) > 0).float() * torch.from_numpy(pos_weight).to(device)+\
+                 (truth.sum([h, w]) == 0).float() * torch.from_numpy(neg_weight).to(device)
+    res = F.binary_cross_entropy_with_logits(logit, truth, reduction='none').mean([h, w])
+    return (weight*res).mean()
+
+
+def loss_dice(logit, truth, weight = 0.5, per_image = True):
+    'Dice loss'
+    h, w = 2, 3 
+    ch = logit.shape[1]
+    if per_image:
+        smooth = 1
+        prob = (torch.sigmoid(logit) > 0.5).float()
+        intersection = (prob * truth).sum([h, w])
+        union = (prob * prob).sum([h, w]) + (truth * truth).sum([h, w])
+        dice = 1 - 2*(intersection + smooth)/(union + 2*smooth)
+        if ch == 1:
+            pos_weight, neg_weight = 1./(2*weight), 1./(2*(1-weight))
+            weight = (truth.sum([h, w]) > 0).float() * pos_weight + (truth.sum([h, w]) == 0).float() * neg_weight
+        else:
+            # use weighted function
+            pos_weight = np.array([1./0.4, 1./0.1, 1./0.6, 1./0.4]).astype(np.float32)
+            neg_weight = np.array([1./1.6, 1./1.9, 1./1.4, 1./1.6]).astype(np.float32) 
+
+            weight = (truth.sum([h, w]) > 0).float() * torch.from_numpy(pos_weight).to(device)+\
+                     (truth.sum([h, w]) == 0).float() * torch.from_numpy(neg_weight).to(device)
+        dice = (weight*dice).mean()
+    else:
+        smooth = 1
+        prob  = torch.sigmoid(logit)
+        intersection = (prob * truth).sum()
+        union =  (prob * prob).sum() + (truth * truth).sum()
+        dice  = 1 - 2*(intersection + smooth)/(union + 2 * smooth)
+    return dice
+
+
+def loss_lovasz(logit, truth, weight = 1, symmetric = False):
+    '''Lovasz loss for four channels: Need to change the shape of images if it is for other tasks
+       weighted version
+    '''
+    bn, ch = logit.shape[:2]
+    h, w = 2, 3
+    # one channel
+    if ch == 1:
+        pos_weight = 1
+        neg_weight = weight
+        weight = (truth.sum([h, w]) > 0).float() * pos_weight +\
+                 (truth.sum([h, w]) == 0).float() * neg_weight
+    # multiple channels
+    else:
+        pos_weight = np.array([1, 1, 1, 1]).astype(np.float32)
+        neg_weight = np.array([weight, weight, weight, weight]).astype(np.float32)
+        weight = (truth.sum([h, w]) > 0).float() * torch.from_numpy(pos_weight).to(device)+\
+                 (truth.sum([h, w]) == 0).float() * torch.from_numpy(neg_weight).to(device)
+
+    loss = mean(weight[i,j]*lovasz_hinge_flat(*flatten_binary_scores(logit[i,j].unsqueeze(0), truth[i,j].unsqueeze(0))) 
+                   for j in range(ch) for i in range(bn))
+    
+    if symmetric:
+        # https://github.com/bestfitting/kaggle/blob/master/siim_acr/src/layers/loss_funcs/loss.py
+        loss += mean(weight[i,j]*lovasz_hinge_flat(*flatten_binary_scores(-logit[i,j].unsqueeze(0), 1-truth[i,j].unsqueeze(0))) 
+                   for j in range(ch) for i in range(bn))
+    return loss
+
+
+def loss_BCE_dice(logit, truth, weight_bce = 0.5, weight_dice = 0.5, weight_mix = 1):
+    return loss_BCE(logit, truth, weight_bce) + weight_mix * loss_dice(logit, truth, weight_dice)
+
+
+def loss_BCE_lovasz(logit, truth, weight_bce = 0.5, weight_lovasz = 0.5, weight_mix = 1, symmetric = False):
+    return loss_BCE(logit, truth, weight_bce) + weight_mix * loss_lovasz(logit, truth, weight_lovasz, symmetric = symmetric)
