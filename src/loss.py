@@ -88,11 +88,11 @@ def criterion_wlovasz_hinge(logit, truth, weight = 0.2):
     return loss
 
 
-def criterion_wbce_dice(logit, truth, weight = 0):
+def criterion_wbce_dice(logit, truth, weight = 0.2):
 	return criterion_weightedBCE(logit, truth, use_weight = True) + criterion_dice(logit, truth)
 
 
-def criterion_wbce_lovasz(logit, truth, weight):
+def criterion_wbce_lovasz(logit, truth, weight = 0.2):
 	return criterion_weightedBCE(logit, truth, use_weight = True) + criterion_wlovasz_hinge(logit, truth, weight)
 
 

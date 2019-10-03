@@ -258,7 +258,7 @@ if __name__ == '__main__':
 	########################################################################
 	# if test run a small version
 	if args.test_run:
-		rows = 100
+		rows = 32
 	else:
 		rows = len(TRAIN_FILES_ALL)
 
@@ -357,14 +357,13 @@ if __name__ == '__main__':
 	steel_ds_valid = SteelDataset(VALID_FILES, args, mask_df = mask_df, augment = augment_valid)	
 		
 	# create the dataloader
-    if args.sampler:
-        train_sampler = BalanceClassSampler(steel_ds_train, args.sample_times * len(steel_ds_train))
-        trainloader = torch.utils.data.DataLoader(steel_ds_train, 
+	if args.sampler:
+		train_sampler = BalanceClassSamplerMultilabel(steel_ds_train, args.sample_times * len(steel_ds_train))
+		trainloader = torch.utils.data.DataLoader(steel_ds_train, 
                                                    batch_size = args.batch, num_workers = 4,
                                                    sampler = train_sampler, drop_last = True,)
-    else:
-        trainloader = torch.utils.data.DataLoader(steel_ds_train, batch_size = args.batch, shuffle = True, num_workers = 4)
-
+	else:
+		trainloader = torch.utils.data.DataLoader(steel_ds_train, batch_size = args.batch, shuffle = True, num_workers = 4)
 	validloader = torch.utils.data.DataLoader(steel_ds_valid, batch_size = args.batch, shuffle = False, num_workers = 4)
 
 	# cpu or gpu

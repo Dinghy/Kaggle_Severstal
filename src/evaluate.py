@@ -25,8 +25,8 @@ def post_process(pred, other, dicPara):
                                                 'thres_after{:d}'.format(category+1), 'thres_oth{:d}'.format(category+1), \
                                                 'size_oth{:d}'.format(category+1))]
         else:
-            paras = [dicPara[item] for item in ('thres_seg{:d}'.format(category+1), 'size_seg{:d}'.format(category+1)),\
-                                                'thres_after{:d}'.format(category+1),]
+            paras = [dicPara[item] for item in ('thres_seg{:d}'.format(category+1), 'size_seg{:d}'.format(category+1),\
+                                                'thres_after{:d}'.format(category+1))]
         pred[:,:,category] = post_process_single(pred[:,:,category], other[category], *paras)
 
     return pred
