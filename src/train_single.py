@@ -54,20 +54,14 @@ def evaluate_batch(data, outputs, args, threshold = 0.5):
         return dice_metric(masks, pred_masks), np.sum((pred_labels == labels).astype(int)) 
 
 
-def evaluate_loader(net, device, criterion, dataloader, args):
+def evaluate_loader(net, device, dataloader, args):
     loss, dice, other = 0.0, 0.0, 0.0
     with torch.no_grad():
         for data in dataloader:
-            images, masks = data[0].to(device), data[1].to(device)
-            images = images.permute(0, 3, 1, 2)
-            masks = masks.permute(0, 3, 1, 2)
+            images = data[0].to(device).permute(0, 3, 1, 2)
+            
             outputs = net(images)
-
-            if args.output == 2:
-                loss += 0.2*criterion[1](outputs[1], data[2].to(device)).item()
-                loss += criterion[0](outputs[0], masks, weight = args.wlovasz).item()
-            elif args.output == 0:
-                loss += criterion[0](outputs, masks).item()
+            loss += compute_loss(args, outputs, data).item()
 
             res = evaluate_batch(data, outputs, args)
             dice, other = dice+res[0], other + res[1]
@@ -125,7 +119,8 @@ if __name__ == '__main__':
     parser.add_argument('-t','--test_run',action = 'store_true',  default = False,   help = 'Run the script quickly to check all functions')
     parser.add_argument('--sampler',      action = 'store_true',  default = False,   help = 'Using sampling mechanism in dataloader.')
     parser.add_argument('--symmetric',    action = 'store_true',  default = False,   help = 'Using symmetric loss in the Lovasz loss function.')
-    
+    parser.add_argument('--save',         action = 'store_true',  default = False,   help = 'Saving the model.')
+   
     parser.add_argument('--wlovasz',     type = float,default = 0.2,        help = 'The weight used in Lovasz loss')
     parser.add_argument('--augment',     type = int,  default = 0,          help = 'The type of train augmentations: 0 vanilla, 1 add contrast, 2 add  ')
     parser.add_argument('--loss',        type = int,  default = 0,          help = 'The loss: 0 BCE vanilla; 1 wbce+dice; 2 wbce+lovasz.')
@@ -136,15 +131,21 @@ if __name__ == '__main__':
     parser.add_argument('--width',       type = int,  default = 1600,       help = 'The width of the image')
     parser.add_argument('--category',    type = int,  default = 1,          help = 'The category of the problem')
     parser.add_argument('-b', '--batch', type = int,  default = 8,          help = 'The batch size of the training')
-    parser.add_argument('-s','--swa',    type = int,  default = 4,          help = 'The number of epochs for stochastic weight averaging')
+    parser.add_argument('-s','--swa',    type = int,  default = 3,          help = 'The number of epochs for stochastic weight averaging')
     parser.add_argument('-o','--output', type = int,  default = 0,          help = 'The type of the network, 0 vanilla, 1 add regression, 2 add classification.')
     parser.add_argument('--seed',        type = int,  default = 1234,       help = 'The random seed of the algorithm.')
     parser.add_argument('--spec_cat',    type = int,  default = 2,          help = 'The category of the mask.')
-    parser.add_argument('--weight_mix',  type = float,  default = 1,        help = 'The mix ratio of two loss function.')
-    parser.add_argument('--weight_bce',  type = float,  default = 0.5,        help = 'The mix ratio of two loss function.')
-    parser.add_argument('--weight_other',type = float,  default = 0.5,        help = 'The mix ratio of two loss function.')
+    parser.add_argument('--weight_mix',  type = float, default = 1,         help = 'The mix ratio of two loss function.')
+    parser.add_argument('--weight_bce',  type = float, default = 0.5,       help = 'The mix ratio of two loss function.')
+    parser.add_argument('--weight_other',type = float, default = 0.5,       help = 'The mix ratio of two loss function.')
+    parser.add_argument('--sample_times',type = int,   default = 1,         help = 'The sampling times of sampler.')
     args = parser.parse_args()
-
+    
+    seed_everything(seed = args.seed)
+    print('===========================')
+    for key, val in vars(args).items():
+        print('{}: {}'.format(key, val))
+    print('===========================\n')
     ################################################################################################
     # weight_mix = 1, symmetric = False
     # folder paths
@@ -195,17 +196,23 @@ if __name__ == '__main__':
     ################################################################################################
     # prepare the dataset
     # get the train and valid files
-    nTrain = int(len(TRAIN_FILES_ALL)*0.8)
-    TRAIN_FILES = TRAIN_FILES_ALL[:nTrain]
-    VALID_FILES = TRAIN_FILES_ALL[nTrain:]
+    # load validation id
+    X_valid = list(pd.read_csv('validID.csv')['Valid'])
+    X_train = list(set(np.arange(len(TRAIN_FILES_ALL))) - set(X_valid))
+   
+    # get the train and valid files
+    TRAIN_FILES = [TRAIN_FILES_ALL[i] for i in X_train]
+    VALID_FILES = [TRAIN_FILES_ALL[i] for i in X_valid]
+
     if args.test_run:
         TRAIN_FILES = TRAIN_FILES[:32]
         VALID_FILES = VALID_FILES[:32]
+
     train_dataset = SteelOneDataset(TRAIN_FILES, args = args, mask_df = mask_df, augment = augment_train, spec_cat = args.spec_cat)
     valid_dataset = SteelOneDataset(VALID_FILES, args = args, mask_df = mask_df, augment = augment_valid, spec_cat = args.spec_cat)
     # create the dataloader
     if args.sampler:
-        train_sampler = BalanceClassSampler(train_dataset, len(train_dataset))
+        train_sampler = BalanceClassSampler(train_dataset, args.sample_times * len(train_dataset))
         trainloader = torch.utils.data.DataLoader(train_dataset, 
                                                    batch_size = args.batch, num_workers = 4,
                                                    sampler = train_sampler, drop_last = True,)
@@ -231,7 +238,7 @@ if __name__ == '__main__':
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epoch, 1.6e-4)
 
     # criterion
-    criterion_seg, criterion_other = criterion[0], criterion[1]
+    # criterion_seg, criterion_other = criterion[0], criterion[1]
 
     print('Training begin!!!!!')
     val_dice_best = -float('inf')
@@ -246,8 +253,8 @@ if __name__ == '__main__':
         # iterate over all samples
         for i, data in tk0:
             # get the inputs; data is a list of [inputs, labels]
-            images = data[0].to(device)
-
+            images = data[0].to(device).permute(0,3,1,2)
+         
             # forward + backward + optimize
             outputs = net(images)
             # do not accumulate the gradient
@@ -286,17 +293,19 @@ if __name__ == '__main__':
 
         # after every epoch, print the statistics
         net.eval()
-        val_loss, val_dice, val_other = evaluate_loader(net, device, criterion, validloader, args)
+        val_loss, val_dice, val_other = evaluate_loader(net, device, validloader, args)
 
         # save the best up to now
         if val_dice > val_dice_best:
             print('Improving val_dice from {:.3f} to {:.3f}, saving the model'.format(val_dice_best/len(VALID_FILES)/args.category, val_dice/len(VALID_FILES)/args.category))
             val_dice_best = val_dice
-            torch.save(net.state_dict(),MODEL_FILE)
+            torch.save(net.state_dict(), MODEL_FILE)
 
         # update the learning rate
         if args.sch > 0:
             scheduler.step()
+            if args.save:
+               torch.save(net.state_dict(), MODEL_FILE)
 
         # update the history and output message
         history['Train_loss'].append(running_loss   / len(trainloader))
@@ -307,7 +316,11 @@ if __name__ == '__main__':
         history['Valid_other'].append(val_other     / len(VALID_FILES)/args.category) 
         sout = '\nEpoch {:d} :'.format(epoch)+' '.join(key+':{:.3f}'.format(val[-1]) for key,val in history.items())
         print(sout)
-
+    
+    # save the final swa model
+    torch.save(net_swa, MODEL_SWA_FILE)
+    # load the best model
+    net.load_state_dict(torch.load(MODEL_FILE))
     print('Training finished!!!!')
 
     ################################################################################################

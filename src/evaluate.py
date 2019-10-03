@@ -110,21 +110,23 @@ class EvaluateOneCategory:
             
             # using bayes optimize to determine the threshold
             if self.args.output == 0:
-                pbounds = {'thres_seg': (0.1, 0.7), 'size_seg' : (500, 6000)}
+                pbounds = {'thres_seg': (0.1, 0.7), 'size_seg': (500, 6000), 'thres_after': (0.1, 0.7)}
             elif self.args.output == 1:
-                pbounds = {'thres_seg': (0.1, 0.7), 'size_seg' : (500, 6000), 'thres_oth':(0.1, 0.7), 'size_oth':(500, 6000)}
+                pbounds = {'thres_seg': (0.1, 0.7), 'size_seg': (500, 6000), 'thres_oth':(0.1, 0.7), 'size_oth':(500, 6000)}
             elif self.args.output == 2:
-                pbounds = {'thres_seg': (0.1, 0.7), 'size_seg' : (500, 6000), 'thres_oth':(0.1, 0.7), 'size_oth':(500, 6000)}
+                pbounds = {'thres_seg': (0.1, 0.7), 'size_seg': (500, 6000), 'thres_oth':(0.1, 0.7), 'size_oth':(500, 6000)}
             optimizer = BayesianOptimization(f = cal_dice, pbounds = pbounds, random_state = 1)   
             # adjust the bayes opt stage
             if self.args.test_run or self.args.epoch < 5:
                 optimizer.maximize(init_points = 5, n_iter = 1)
             else:
-                optimizer.maximize(init_points = 5, n_iter = 1)
+                optimizer.maximize(init_points = 100, n_iter = 10)
 
             self.dicPara['thres_seg'] = optimizer.max['params']['thres_seg']
             self.dicPara['size_seg']  = optimizer.max['params']['size_seg']
+            self.dicPara['thres_after'] = optimizer.max['params']['thres_after']
         return
+
 
     def predict_flip_batch(self, images):
         'Same as predict flip but deal with a batch of images'
@@ -207,7 +209,8 @@ class EvaluateOneCategory:
                 for output_mask, output_label, label_raw in zip(output_masks, output_labels, labels):
                     # using simple threshold and output the result
                     output_thres = post_process_segment(output_mask, thres_seg = self.dicPara['thres_seg'], \
-                                                             size_seg = self.dicPara['size_seg'])
+                                                             size_seg = self.dicPara['size_seg'], \
+                                                             thres_after = self.dicPara['thres_after'])
 
                     # calculate the dice if it is not a test dataloader
                     if not self.isTest:
@@ -219,6 +222,7 @@ class EvaluateOneCategory:
                             dice_neg.add(dice)
         
         # print information
+        print('Parameters: ',','.join(['"{:s}":{:.4f}'.format(key, val) for key,val in self.dicPara.items()]))
         print('Dice total {:.3f}'.format(dice_total.avg()))
         print('Positive Data {:d}, {:.3f}'.format(dice_pos.num, dice_pos.avg()))
         print('Negative Data {:d}, {:.3f}'.format(dice_neg.num, dice_neg.avg())) 
