@@ -7,13 +7,13 @@ import matplotlib.pyplot as plt
 from metric import dice_metric
 from utils import mask2rle, rle2mask, plot_mask
 
-def post_process_single(pred, other, thres_seg = 0.5, size_seg = 100, thres_oth = -float('inf'), size_oth = 0):
-    pred = (pred > thres_seg).astype(int)
+def post_process_single(pred, other, thres_seg = 0.5, size_seg = 100, thres_after = 0.4, thres_oth = -float('inf'),  size_oth = 0):
+    pred_greed = (pred > thres_seg).astype(int)
     # TTA: combining classification and size thresholding
-    nsize = pred.sum() 
+    nsize = pred_greed.sum() 
     if nsize < size_seg or (nsize < size_oth+size_seg and other < thres_oth):
         pred *= 0
-    return pred
+    return (pred > thres_after).astype(int)
 
 
 def post_process(pred, other, dicPara):
@@ -22,9 +22,11 @@ def post_process(pred, other, dicPara):
     for category in range(4):
         if 'thres_oth{:d}'.format(category+1) in dicPara:
             paras = [dicPara[item] for item in ('thres_seg{:d}'.format(category+1), 'size_seg{:d}'.format(category+1), \
-                        'thres_oth{:d}'.format(category+1), 'size_oth{:d}'.format(category+1))]
+                                                'thres_after{:d}'.format(category+1), 'thres_oth{:d}'.format(category+1), \
+                                                'size_oth{:d}'.format(category+1))]
         else:
-            paras = [dicPara[item] for item in ('thres_seg{:d}'.format(category+1), 'size_seg{:d}'.format(category+1))]
+            paras = [dicPara[item] for item in ('thres_seg{:d}'.format(category+1), 'size_seg{:d}'.format(category+1)),\
+                                                'thres_after{:d}'.format(category+1),]
         pred[:,:,category] = post_process_single(pred[:,:,category], other[category], *paras)
 
     return pred
@@ -229,7 +231,6 @@ class EvaluateOneCategory:
         return dice_total.avg()
 
 
-
 class Evaluate:
 
     def __init__(self, net, device, dataloader, args, dicPara = None, isTest = True):
@@ -247,6 +248,7 @@ class Evaluate:
         self.output_mask = np.zeros((self.args.height, self.args.width, self.args.category))
         self.output_label = np.zeros((1, self.args.category))
 
+
     def search_parameter(self):
         'Bayes opt to determine the threshold for each label'
         self.eval_net()
@@ -254,13 +256,13 @@ class Evaluate:
         # store the parameters
         self.dicPara = {}
 
-        def cal_dice(thres_seg, size_seg, thres_oth=-float('inf'), size_oth=0):
+        def cal_dice(thres_seg, size_seg, thres_after, thres_oth=-float('inf'), size_oth=0):
             ipos = 0
             dice = 0.0
             for pred, other, true_rle in zip(preds, others, trues):
                 # post process
                 true = rle2mask(true_rle, self.args.width, self.args.height)
-                pred = post_process_single(pred, other, thres_seg, size_seg, thres_oth, size_oth)
+                pred = post_process_single(pred, other, thres_seg, size_seg, thres_after, thres_oth, size_oth)
                 ipos += 1
                 dice += dice_metric(true, pred)
             return dice/len(preds)
@@ -294,7 +296,8 @@ class Evaluate:
             elif self.args.output == 1:
                 pbounds = {'thres_seg': (0.1, 0.7), 'size_seg' : (500, 6000), 'thres_oth':(0.1, 0.7), 'size_oth':(500, 6000)}
             elif self.args.output == 2:
-                pbounds = {'thres_seg': (0.1, 0.7), 'size_seg' : (500, 6000), 'thres_oth':(0.1, 0.7), 'size_oth':(500, 6000)}
+                pbounds = {'thres_seg': (0.1, 0.7), 'size_seg' : (500, 6000), 'thres_after': (0.1, 0.7),\
+                            'thres_oth':(0.1, 0.7), 'size_oth':(500, 6000)}
             optimizer = BayesianOptimization(f = cal_dice, pbounds = pbounds, random_state = 1)   
             # adjust the bayes opt stage
             if self.args.test_run or self.args.epoch < 5:
@@ -304,10 +307,12 @@ class Evaluate:
 
             self.dicPara['thres_seg{:d}'.format(category+1)] = optimizer.max['params']['thres_seg']
             self.dicPara['size_seg{:d}'.format(category+1)]  = optimizer.max['params']['size_seg']
+            self.dicPara['thres_after{:d}'.format(category+1)] = optimizer.max['params']['thres_after']
             if self.args.output > 0:
                 self.dicPara['thres_oth{:d}'.format(category+1)] = optimizer.max['params']['thres_oth']
                 self.dicPara['size_oth{:d}'.format(category+1)]  = optimizer.max['params']['size_oth']
         return
+
 
     def predict_flip_batch(self, images):
         'Same as predict flip but deal with a batch of images'

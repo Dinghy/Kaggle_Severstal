@@ -179,9 +179,9 @@ if __name__ == '__main__':
     augment_train = Compose([
         Flip(p=0.5),   # Flip vertically or horizontally or both
         RandomBrightnessContrast(p = 0.5),
+        ShiftScaleRotate(rotate_limit = 10, p = 0.3),
         Normalize(mean = (train_mean, train_mean, train_mean), std  = (train_std, train_std, train_std)),
-        ToFloat(max_value=1.)
-    ],p=1)
+        ToFloat(max_value=1.)], p=1)
 
     # validation
     augment_valid = Compose([

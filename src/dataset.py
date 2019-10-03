@@ -53,7 +53,22 @@ class SteelDataset(Dataset):
         self.augment = augment
         self.args = args
         self.augTag = self.augment is not None and len([item for item in self.augment]) > 2 and self.args.augment == 2    
-    
+    	# get prepared for balanced labels
+    	if self.mask_df is not None:
+	    	test1 = np.array([filepath.split('/')[-1]+'_{:d}'.format(1) for filepath in fpaths])
+			test2 = np.array([filepath.split('/')[-1]+'_{:d}'.format(2) for filepath in fpaths])
+			test3 = np.array([filepath.split('/')[-1]+'_{:d}'.format(3) for filepath in fpaths])
+			test4 = np.array([filepath.split('/')[-1]+'_{:d}'.format(4) for filepath in fpaths])
+
+			pos_flag1 =  np.array(self.mask_df.loc[test1,'EncodedPixels']!='-1')[:,np.newaxis]
+			pos_flag2 =  np.array(self.mask_df.loc[test2,'EncodedPixels']!='-1')[:,np.newaxis]
+			pos_flag3 =  np.array(self.mask_df.loc[test3,'EncodedPixels']!='-1')[:,np.newaxis]
+			pos_flag4 =  np.array(self.mask_df.loc[test4,'EncodedPixels']!='-1')[:,np.newaxis] 
+
+			arrtags = np.concatenate([pos_flag1, pos_flag2, pos_flag3, pos_flag4], axis = 1).astype(int)
+			self.arrtags = np.concatenate([arrtags, (arrtags.sum(axis=1)==0)[:,np.newaxis].astype(int)], axis = 1)
+
+
     def __getitem__(self, idx):
         'get one image along with its masks on four categories'
         fpath = self.fpaths[idx]
@@ -122,35 +137,6 @@ class SteelDataset(Dataset):
         self.stat_df = pd.DataFrame(dicStat)
         return self.stat_df
 
-
-# https://www.kaggle.com/c/siim-acr-pneumothorax-segmentation/discussion/97456
-class BalanceClassSampler(Sampler):
-    def __init__(self, dataset, length=None):
-        self.dataset = dataset
-        if length is None:
-            length = len(self.dataset)
-        self.length = int(length)
-
-        half = self.length // 2 + 1
-        self.pos_length = half
-        self.neg_length = half
-        print('pos num: %s, neg num: %s' % (self.pos_length, self.neg_length))
-
-    def __iter__(self):
-        pos_index = np.where(self.dataset.pos_flag)[0]
-        neg_index = np.where(~self.dataset.pos_flag)[0]
-
-        pos = np.random.choice(pos_index, self.pos_length, replace=True)
-        neg = np.random.choice(neg_index, self.neg_length, replace=True)
-
-        l = np.hstack([pos, neg]).T
-        l = l.reshape(-1)
-        np.random.shuffle(l)
-        l = l[:self.length]
-        return iter(l)
-
-    def __len__(self):
-        return self.length
 
 
 class SteelOneDataset(Dataset):
@@ -269,3 +255,61 @@ class SteelOneDataset(Dataset):
         
         self.stat_df = pd.DataFrame(dicStat)
         return self.stat_df
+
+
+
+# https://www.kaggle.com/c/siim-acr-pneumothorax-segmentation/discussion/97456
+class BalanceClassSamplerMultilabel(Sampler):
+    def __init__(self, dataset, length=None):
+        self.dataset = dataset
+        if length is None:
+            length = len(self.dataset)
+        self.length = int(length)
+
+
+    def __iter__(self):
+        p1, p2, p3, p4, p5 = 0.123, 0.028, 0.89, 0.08, 0.80
+
+		p = self.dataset.arrtags[:,0]/p1 + self.dataset.arrtags[:,1]/p2 +\
+			self.dataset.arrtags[:,2]/p3 + self.dataset.arrtags[:,3]/p4 + self.dataset.arrtags[:,4]/p5
+
+		p /= p.sum()
+		choice = np.random.choice(self.dataset.arrtags.shape[0], self.length, replace=True, p = p)
+        l = l.reshape(-1)
+        np.random.shuffle(l)
+        l = l[:self.length]
+        return iter(l)
+
+    def __len__(self):
+        return self.length
+
+
+
+# https://www.kaggle.com/c/siim-acr-pneumothorax-segmentation/discussion/97456
+class BalanceClassSampler(Sampler):
+    def __init__(self, dataset, length=None):
+        self.dataset = dataset
+        if length is None:
+            length = len(self.dataset)
+        self.length = int(length)
+
+        half = self.length // 2 + 1
+        self.pos_length = half
+        self.neg_length = half
+        print('pos num: %s, neg num: %s' % (self.pos_length, self.neg_length))
+
+    def __iter__(self):
+        pos_index = np.where(self.dataset.pos_flag)[0]
+        neg_index = np.where(~self.dataset.pos_flag)[0]
+
+        pos = np.random.choice(pos_index, self.pos_length, replace=True)
+        neg = np.random.choice(neg_index, self.neg_length, replace=True)
+
+        l = np.hstack([pos, neg]).T
+        l = l.reshape(-1)
+        np.random.shuffle(l)
+        l = l[:self.length]
+        return iter(l)
+
+    def __len__(self):
+        return self.length

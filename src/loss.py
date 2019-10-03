@@ -148,7 +148,7 @@ def loss_dice(logit, truth, weight = 0.5, per_image = True):
     return dice
 
 
-def loss_lovasz(logit, truth, weight = 1, symmetric = False):
+def loss_lovasz(logit, truth, weight = 1, symmetric = True):
     '''Lovasz loss for four channels: Need to change the shape of images if it is for other tasks
        weighted version
     '''
