@@ -204,6 +204,8 @@ if __name__ == '__main__':
 	parser.add_argument('-l','--load_mod',action = 'store_true',  default = False,   help = 'Load a pre-trained model')
 	parser.add_argument('-t','--test_run',action = 'store_true',  default = False,   help = 'Run the script quickly to check all functions')
 	parser.add_argument('--sampler',      action = 'store_true',  default = False,   help = 'Use sampler in the algorithm.')
+	parser.add_argument('--evaluate',     action = 'store_false', default = True,    help = 'Evaluate the third category only.')
+	parser.add_argument('--conservative', action = 'store_true',  default = False,   help = 'Use conservative augmentations.')
 
 	parser.add_argument('--wlovasz',     type = float,default = 0.2,        help = 'The weight used in Lovasz loss')
 	parser.add_argument('--augment',     type = int,  default = 0,          help = 'The type of train augmentations: 0 vanilla, 1 add contrast, 2 add  ')
@@ -379,10 +381,8 @@ if __name__ == '__main__':
 
 	########################################################################
 	# Model
-	if args.model == 'resnet34':
-		net = Unet("resnet34", encoder_weights="imagenet", classes = 4, activation = None, args = args).to(device)  # pass model specification to the resnet32
-	else:
-		raise NotImplementedError
+	if args.model == 'resnet34' or args.model == 'se_resnet50':
+		net = Unet(args.model, encoder_weights = "imagenet", classes = 4, activation = None, args = args).to(device)  # pass model specification to the resnet32
 	
 
 	########################################################################
@@ -422,16 +422,16 @@ if __name__ == '__main__':
 	# get all predictions of the validation set: maybe a memory error here.
 	if args.load_mod:
 		# load the best model
-		# net.load_state_dict(torch.load(MODEL_FILE))
-		# eva = Evaluate(net, device, validloader, args, isTest = False)
-		# eva.search_parameter()
-		# dice, dicPred, dicSubmit = eva.predict_dataloader()
+		net.load_state_dict(torch.load(MODEL_FILE))
+		eva = Evaluate(net, device, validloader, args, isTest = False)
+		eva.search_parameter()
+		dice, dicPred, dicSubmit = eva.predict_dataloader()
 		# eva.plot_sampled_predict()
 
 		# evaluate the prediction
-		# sout = '\nFinal Dice {:.3f}\n'.format(dice/len(VALID_FILES)/4) +\
-		#	'==============Predict===============\n' + \
-		#	analyze_labels(pd.DataFrame(dicPred)) +\
+		sout = '\nFinal Dice {:.3f}\n'.format(dice/len(VALID_FILES)/4) +\
+			'==============Predict===============\n' + \
+			analyze_labels(pd.DataFrame(dicPred)) # +\
 		#	'==============True===============\n' + \
 		#	analyze_labels(stat_df_valid)
 		# print(sout)
@@ -439,19 +439,20 @@ if __name__ == '__main__':
 		# print2file(' '.join(str(key)+':'+str(val) for key,val in eva.dicPara.items()), LOG_FILE)
 	
 		# load swa model
-		net.load_state_dict(torch.load(MODEL_SWA_FILE))
-		eva = Evaluate(net, device, validloader, args, isTest = False)
-		eva.search_parameter()
-		dice, dicPred, dicSubmit = eva.predict_dataloader()
-		eva.plot_sampled_predict()
+		# net.load_state_dict(torch.load(MODEL_SWA_FILE))
+		# eva = Evaluate(net, device, validloader, args, isTest = False)
+		# eva.search_parameter()
+		
+		# dice, dicPred, dicSubmit = eva.predict_dataloader()
+		# eva.plot_sampled_predict()
 	
 		# evaluate the prediction
-		sout = '\n\nFinal SWA Dice {:.3f}\n'.format(dice/len(VALID_FILES)/4) +\
-			'==============SWA Predict===============\n' + \
-                        analyze_labels(pd.DataFrame(dicPred)) + \
-                        '==============True===============\n' + \
-                        analyze_labels(stat_df_valid)
+		# sout = '\n\nFinal SWA Dice {:.3f}\n'.format(dice/len(VALID_FILES)/4) +\
+		#	'==============SWA Predict===============\n' + \
+                #        analyze_labels(pd.DataFrame(dicPred)) + \
+                #        '==============True===============\n' + \
+                #        analyze_labels(stat_df_valid)
 		
-		print(sout)
-		print2file(sout, LOG_FILE)
-		print2file(','.join('"'+str(key)+'":'+str(val) for key,val in eva.dicPara.items()), LOG_FILE)
+		# print(sout)
+		# print2file(sout, LOG_FILE)
+		# print2file(','.join('"'+str(key)+'":'+str(val) for key,val in eva.dicPara.items()), LOG_FILE)

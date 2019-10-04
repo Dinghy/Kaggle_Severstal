@@ -12,7 +12,7 @@ def post_process_single(pred, other, thres_seg = 0.5, size_seg = 100, thres_afte
     # TTA: combining classification and size thresholding
     nsize = pred_greed.sum() 
     if nsize < size_seg or (nsize < size_oth+size_seg and other < thres_oth):
-        pred *= 0
+        return pred * 0
     return (pred > thres_after).astype(int)
 
 
@@ -269,7 +269,12 @@ class Evaluate:
 
         preds, trues, others = [], [], []
         bfirst = True
-        for category in range(4):
+        #if self.args.evaluate:
+        #    categories = [2]
+        #else:
+        categories = [0,1,2,3]
+
+        for category in categories:
             ipos = 0
             # get the prediction and save it
             with torch.no_grad():
@@ -303,7 +308,7 @@ class Evaluate:
             if self.args.test_run or self.args.epoch < 5:
                 optimizer.maximize(init_points = 5, n_iter = 1)
             else:
-                optimizer.maximize(init_points = 5, n_iter = 1)
+                optimizer.maximize(init_points = 50, n_iter = 300)
 
             self.dicPara['thres_seg{:d}'.format(category+1)] = optimizer.max['params']['thres_seg']
             self.dicPara['size_seg{:d}'.format(category+1)]  = optimizer.max['params']['size_seg']
@@ -427,6 +432,7 @@ class Evaluate:
         ipos = 0
         def area_ratio(mask):
             return mask.sum()/self.args.height/self.args.width
+        
             
         with torch.no_grad():
             for data in tqdm(self.dataloader):
