@@ -226,8 +226,9 @@ if __name__ == '__main__':
     history = {'Train_loss':[], 'Train_dice':[], 'Train_other':[],  'Valid_loss':[], 'Valid_dice':[], 'Valid_other':[]}	
     # optimizer
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    
     # net 
-    net = Unet("resnet34", encoder_weights="imagenet", classes = 1, activation = None, args = args).to(device)
+    net = Unet(args.model, encoder_weights="imagenet", classes = 1, activation = None, args = args).to(device)
     
     optimizer = optim.Adam(net.parameters(), lr = 0.001)
 

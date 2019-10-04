@@ -29,8 +29,8 @@ def criterion_weightedBCE(logit, truth, weight = 0, use_weight = True):
 def criterion_wbce(pred, truth):
 	'Weighted BCE loss'
 	# use weighted function
-	pos_weight = np.array([1./0.4, 1./0.1, 1./0.6, 1./0.4]).astype(np.float32)
-	neg_weight = np.array([1./1.6, 1./1.9, 1./1.4, 1./1.6]).astype(np.float32)
+	pos_weight = np.array([1./0.4, 1./0.4, 1./0.4, 1./0.4]).astype(np.float32)
+	neg_weight = np.array([1./1.6, 1./1.6, 1./1.6, 1./1.6]).astype(np.float32)
 	weight = (truth == 1).float() * torch.from_numpy(pos_weight).to(device)+\
 		 (truth == 0).float() * torch.from_numpy(neg_weight).to(device)
 	res = F.binary_cross_entropy_with_logits(pred, truth, reduction='none')

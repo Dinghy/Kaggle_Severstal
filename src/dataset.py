@@ -7,6 +7,37 @@ from tqdm import tqdm
 from utils import rle2mask
 
 
+def random_crop_shift_pad_old(image, mask, p = 0.3):
+    # randomly crop a part from the image in width direction
+    # randomly shift in the width direction
+    # pad the empty part with zero
+    height, width = image.shape[:2]
+    if np.random.uniform() >= p:
+        return image, mask
+
+    image_sum = np.sum(image, axis = (0,2))/3
+    pos = np.where(image_sum <= 10)[0] # black positions
+    if len(pos) <= 5: # full image
+        beg, end = 0, width-1
+    elif pos[0] != 0: # image in the front
+        beg, end = 0, pos[0]-1 
+    else:             # image in the back
+        beg, end = pos[-1]+1, width-1
+
+    if end-beg+1 >= 800:
+        dx   = np.random.randint(200, end-beg+1)  # width of the crop
+        image_new, mask_new = np.random.uniform(size = image.shape)*0.01, np.zeros(mask.shape)
+        if np.random.uniform() >= 0.5:
+            image_new[:, :dx] = image[:,beg:beg+dx]
+            mask_new[:, :dx] = mask[:,beg:beg+dx]
+        else:
+            image_new[:, -dx:] = image[:,beg:beg+dx]
+            mask_new[:, -dx:] = mask[:,beg:beg+dx]
+        return image_new, mask_new
+    else:
+        return image, mask
+
+
 def random_crop_shift_pad(image, mask, p = 0.4):
     # randomly crop a part from the image in width direction
     # randomly shift in the width direction
@@ -89,7 +120,10 @@ class SteelDataset(Dataset):
             image, mask = augmented['image'], augmented['mask']
             # do additional augmentations for training data set
             if self.augTag:
-                image, mask = random_crop_shift_pad(image, mask)
+                if not self.args.conservative:
+                    image, mask = random_crop_shift_pad(image, mask)
+                else:
+                    image, mask = random_crop_shift_pad_old(image, mask)
 
         # do simple normalization
         else:

@@ -369,10 +369,7 @@ if __name__ == '__main__':
 
 	########################################################################
 	# Model
-	if args.model == 'resnet34':
-		net = Unet("resnet34", encoder_weights="imagenet", classes = 4, activation = None, args = args).to(device)  # pass model specification to the resnet32
-	else:
-		raise NotImplementedError
+	net = Unet(args.model, encoder_weights="imagenet", classes = 4, activation = None, args = args).to(device)  # pass model specification to the resnet32
 	
 	nets = []
 	for seed in range(1234, 1237):
