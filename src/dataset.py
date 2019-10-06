@@ -201,6 +201,7 @@ class SteelOneDataset(Dataset):
         else:
             self.pos_flag = None
 
+
     def __getitem__(self, idx):
         'get one image along with its masks on four categories'
         fpath = self.fpaths[idx]
