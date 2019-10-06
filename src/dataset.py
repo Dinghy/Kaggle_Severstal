@@ -38,7 +38,7 @@ def random_crop_shift_pad_old(image, mask, p = 0.3):
         return image, mask
 
 
-def random_crop_shift_pad(image, mask, p = 0.4):
+def random_crop_shift_pad(image, mask, p = 0.3):
     # randomly crop a part from the image in width direction
     # randomly shift in the width direction
     # pad the empty part with zero
