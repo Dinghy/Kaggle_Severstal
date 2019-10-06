@@ -244,10 +244,6 @@ class Evaluate:
         self.dataloader = dataloader
         self.dicPara = dicPara
         self.isTest = isTest
-        
-        self.output_mask = np.zeros((self.args.height, self.args.width, self.args.category))
-        self.output_label = np.zeros((1, self.args.category))
-
 
     def search_parameter(self):
         'Bayes opt to determine the threshold for each label'
@@ -269,9 +265,6 @@ class Evaluate:
 
         preds, trues, others = [], [], []
         bfirst = True
-        #if self.args.evaluate:
-        #    categories = [2]
-        #else:
         categories = [0,1,2,3]
 
         for category in categories:
@@ -282,16 +275,16 @@ class Evaluate:
                     images, labels = data[0], data[1]
                     for image_raw, label_raw in zip(images, labels):
                         # flip and predict
-                        output_merge, output_other = self.predict_flip(image_raw)
+                        output_merge, output_other = self.predict_flip(image_raw, category)
                         true_mask = label_raw[:,:,category].detach().numpy().astype(int)
                         if bfirst:
                             trues.append(mask2rle(true_mask))
-                            preds.append(output_merge[:,:,category])
-                            others.append(output_other[category])
+                            preds.append(output_merge)
+                            others.append(output_other)
                         else:
                             trues[ipos] = mask2rle(true_mask)
-                            preds[ipos] = output_merge[:,:,category]
-                            others[ipos] = output_other[category]
+                            preds[ipos] = output_merge
+                            others[ipos] = output_other
                         ipos += 1
             bfirst = False
             
@@ -362,12 +355,12 @@ class Evaluate:
         return self.output_mask/4/len(self.net), self.output_label/4/len(self.net)
 
 
-    def predict_flip(self, image_raw):
+    def predict_flip(self, image_raw, category):
         'predict the mask for one simple image'
         
         # clean the data
-        self.output_mask *= 0  # np.zeros((self.args.height, self.args.width, self.args.category))
-        self.output_label *= 0 #  np.zeros((1, self.args.category))
+        output_mask = np.zeros((self.args.height, self.args.width))
+        output_label = np.zeros((1,))
 
         # obtain the prediction
         for net in self.net:
@@ -384,24 +377,24 @@ class Evaluate:
                 preds = net(image_flip.permute(0, 3, 1, 2))
 
                 if self.args.output == 0:   # vanilla
-                    outputs = torch.sigmoid(preds).permute(0, 2, 3, 1).detach().cpu().numpy()[0]
+                    outputs = torch.sigmoid(preds).permute(0, 2, 3, 1).detach().cpu().numpy()[0,:,:,category]
                 elif self.args.output == 1: # regression
-                    outputs = torch.sigmoid(preds[0]).permute(0, 2, 3, 1).detach().cpu().numpy()[0]
-                    self.output_label += preds[1].detach().cpu().numpy()
+                    outputs = torch.sigmoid(preds[0]).permute(0, 2, 3, 1).detach().cpu().numpy()[0,:,:,category]
+                    output_label += preds[1].detach().cpu().numpy()[0,category]
                 elif self.args.output == 2: # classification
-                    outputs = torch.sigmoid(preds[0]).permute(0, 2, 3, 1).detach().cpu().numpy()[0]
-                    self.output_label += torch.sigmoid(preds[1]).detach().cpu().numpy()
-  
+                    outputs = torch.sigmoid(preds[0]).permute(0, 2, 3, 1).detach().cpu().numpy()[0,:,:,category]
+                    output_label += torch.sigmoid(preds[1]).detach().cpu().numpy()[0,category]
+
                 # flip the predicted results
                 if lr == 1: # flip the prediction from right to left
                     outputs = np.fliplr(outputs)  # (256, 1600, 4)
                 if ud == 1:
                     outputs = np.flipud(outputs)
-                    
-                # merge the result
-                self.output_mask += outputs
 
-        return self.output_mask/4/len(self.net), self.output_label[0]/4/len(self.net)
+                # merge the result
+                output_mask += outputs
+
+        return output_mask/4/len(self.net), output_label/4/len(self.net)
 
     
     def eval_net(self):
@@ -513,4 +506,3 @@ class Evaluate:
             plt.savefig('../output/evaluate_image.png')
         except:
             plt.savefig('evaluate_image.png')
-        return
