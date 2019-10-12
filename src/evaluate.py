@@ -4,6 +4,7 @@ from bayes_opt import BayesianOptimization
 from tqdm import tqdm
 import matplotlib.pyplot as plt 
 
+import pandas as pd
 from metric import dice_metric
 from utils import mask2rle, rle2mask, plot_mask
 
@@ -245,6 +246,17 @@ class Evaluate:
         self.dicPara = dicPara
         self.isTest = isTest
 
+        # weight for each data sample in the validation set
+        if True:
+            valid_df = pd.read_csv('validID.csv')
+            self.weight = np.array(valid_df['ratio'])[:len(dataloader.dataset)]
+            print(self.weight[:10])
+            self.nweight = np.sum(self.weight)
+        else:
+            self.weight = np.ones((len(dataloader.dataset),))
+            self.nweight = len(dataloader.dataset)
+
+
     def search_parameter(self):
         'Bayes opt to determine the threshold for each label'
         self.eval_net()
@@ -255,13 +267,22 @@ class Evaluate:
         def cal_dice(thres_seg, size_seg, thres_after, thres_oth=-float('inf'), size_oth=0):
             ipos = 0
             dice = 0.0
+            if self.args.use_weight:
+                nnormal = self.nweight
+            else:
+                nnormal = len(self.dataloader.dataset)
+
             for pred, other, true_rle in zip(preds, others, trues):
                 # post process
                 true = rle2mask(true_rle, self.args.width, self.args.height)
                 pred = post_process_single(pred, other, thres_seg, size_seg, thres_after, thres_oth, size_oth)
+                if self.args.use_weight:
+                    dice += dice_metric(true, pred)*self.weight[ipos]
+                else:
+                    dice += dice_metric(true, pred)
                 ipos += 1
-                dice += dice_metric(true, pred)
-            return dice/len(preds)
+
+            return dice/nnormal
 
         preds, trues, others = [], [], []
         bfirst = True
@@ -295,11 +316,11 @@ class Evaluate:
                 pbounds = {'thres_seg': (0.1, 0.7), 'size_seg' : (500, 6000), 'thres_oth':(0.1, 0.7), 'size_oth':(500, 6000)}
             elif self.args.output == 2:
                 pbounds = {'thres_seg': (0.1, 0.7), 'size_seg' : (500, 6000), 'thres_after': (0.1, 0.5),\
-                            'thres_oth':(0.1, 0.7), 'size_oth':(500, 6000)}
+                            'thres_oth':(0.1, 0.7)}
             optimizer = BayesianOptimization(f = cal_dice, pbounds = pbounds, random_state = 1)   
             # adjust the bayes opt stage
             if self.args.test_run or self.args.epoch < 5:
-                optimizer.maximize(init_points = 5, n_iter = 1)
+                optimizer.maximize(init_points = 15, n_iter = 1)
             else:
                 optimizer.maximize(init_points = 300, n_iter = 100)
 
@@ -308,7 +329,7 @@ class Evaluate:
             self.dicPara['thres_after{:d}'.format(category+1)] = optimizer.max['params']['thres_after']
             if self.args.output > 0:
                 self.dicPara['thres_oth{:d}'.format(category+1)] = optimizer.max['params']['thres_oth']
-                self.dicPara['size_oth{:d}'.format(category+1)]  = optimizer.max['params']['size_oth']
+                self.dicPara['size_oth{:d}'.format(category+1)]  = -float('inf') # optimizer.max['params']['size_oth']
        
         print(self.dicPara)
         return
@@ -424,6 +445,7 @@ class Evaluate:
             dicPred['True '+str(classid+1)] = []
         dicSubmit = {'ImageId_ClassId':[], 'EncodedPixels':[]}
         dice, preds = 0.0, []
+        diceW = 0.0
         ipos = 0
         def area_ratio(mask):
             return mask.sum()/self.args.height/self.args.width
@@ -456,17 +478,22 @@ class Evaluate:
                             dice_cat = dice_metric(label_raw[:,:,category].detach().cpu().numpy(), output_thres[:,:,category])
                             dicPred['Dice {:d}'.format(category+1)].append(dice_cat)
                             dicPred['True {:d}'.format(category+1)].append(area_ratio(label_raw[:,:,category].detach().cpu().numpy()))
-                            
+                            # add to the final dice
+                            # print(self.weight.shape, ipos)
+                            dice  += dice_cat
+                            diceW += dice_cat*self.weight[ipos]                            
                     ipos += 1
-                    # calculate the dice if it is not a test dataloader
-                    if not self.isTest:
-                        dice += dice_metric(label_raw.detach().cpu().numpy(), output_thres)
-                        # print(ipos, dice)
         
         keys = [key for key in dicPred.keys()]
         for key in keys:
             if len(dicPred[key]) == 0:
                 dicPred.pop(key, None)
+
+        # regularize result
+        diceW =  diceW/self.nweight/self.args.category
+        dice  =  dice/len(self.dataloader.dataset)/self.args.category
+        print("Weighted Dice {:.4f}\t Unweighted Dice {:.4f}".format(diceW, dice))
+
         return dice, dicPred, dicSubmit
 
 

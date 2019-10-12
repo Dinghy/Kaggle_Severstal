@@ -111,9 +111,9 @@ def train_net(net, optimizer, device, args, LOG_FILE, MODEL_FILE):
 
 	# scheduler
 	if args.sch == 1:
-		scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones = [args.epoch//2, args.epoch*3//4], gamma = 0.4)
+		scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones = [args.epoch//2, args.epoch*3//4], gamma = 0.35)
 	elif args.sch == 2:
-		scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epoch, 1.6e-4)
+		scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epoch, 1e-4)
 	
 	val_dice_best = -float('inf')
 	# main iteration
@@ -206,11 +206,12 @@ if __name__ == '__main__':
 	parser.add_argument('--sampler',      action = 'store_true',  default = False,   help = 'Use sampler in the algorithm.')
 	parser.add_argument('--evaluate',     action = 'store_false', default = True,    help = 'Evaluate the third category only.')
 	parser.add_argument('--conservative', action = 'store_true',  default = False,   help = 'Use conservative augmentations.')
+	parser.add_argument('--use_weight',   action = 'store_true',  default = False,   help = 'Use weights in evaluation.')
 
 	parser.add_argument('--wlovasz',     type = float,default = 0.2,        help = 'The weight used in Lovasz loss')
 	parser.add_argument('--augment',     type = int,  default = 0,          help = 'The type of train augmentations: 0 vanilla, 1 add contrast, 2 add  ')
 	parser.add_argument('--loss',        type = int,  default = 0,          help = 'The loss: 0 BCE vanilla; 1 wbce+dice; 2 wbce+lovasz.')
-	parser.add_argument('--sch',         type = int,  default = 0,          help = 'The schedule of the learning rate: 0 step; 1 cosine annealing; 2 cosine annealing with warmup.')	
+	parser.add_argument('--sch',         type = int,  default = 2,          help = 'The schedule of the learning rate: 0 step; 1 cosine annealing; 2 cosine annealing with warmup.')	
 	parser.add_argument('-m', '--model', type = str,  default = 'resnet34', help = 'The backbone network of the neural network.')
 	parser.add_argument('-e', '--epoch', type = int,  default = 5,          help = 'The number of epochs in the training')
 	parser.add_argument('--height',      type = int,  default = 256,        help = 'The height of the image')
@@ -218,9 +219,10 @@ if __name__ == '__main__':
 	parser.add_argument('--category',    type = int,  default = 4,          help = 'The category of the problem')
 	parser.add_argument('-b', '--batch', type = int,  default = 8,          help = 'The batch size of the training')
 	parser.add_argument('-s','--swa',    type = int,  default = 4,          help = 'The number of epochs for stochastic weight averaging')
-	parser.add_argument('-o','--output', type = int,  default = 0,          help = 'The type of the network, 0 vanilla, 1 add regression, 2 add classification.')
+	parser.add_argument('-o','--output', type = int,  default = 2,          help = 'The type of the network, 0 vanilla, 1 add regression, 2 add classification.')
 	parser.add_argument('--seed',        type = int,  default = 1234,       help = 'The random seed of the algorithm.')
-	parser.add_argument('--sample_times',type = int,   default = 1,         help = 'The sampling times of sampler.')
+	parser.add_argument('--sample_times',type = int,  default = 1,          help = 'The sampling times of sampler.')
+	parser.add_argument('--sample_ratio',type = float,default = 0.4,        help = 'The sampling ratio of the third class.')
 
 	args = parser.parse_args()
 
@@ -236,7 +238,7 @@ if __name__ == '__main__':
 	TRAIN_MASKS = '../input/severstal-steel-defect-detection/train.csv'
 	
 	# ouput folder paths
-	dicSpec = {'m_':args.model, 'e_':args.epoch, 'wl_':int(100*args.wlovasz), 'sch_':args.sch, 'loss_':args.loss, 'out_':args.output, 'seed_':args.seed}
+	dicSpec = {'m_':args.model, 'con_':int(args.conservative),'r_':int(10*args.sample_ratio), 's_':int(args.sampler), 'e_':args.epoch, 'sch_':args.sch, 'loss_':args.loss}
 	strSpec = '_'.join(key+str(val) for key,val in dicSpec.items())
 	
 	VALID_ID_FILE = '../output/validID_{:s}.csv'.format(strSpec)
@@ -360,7 +362,7 @@ if __name__ == '__main__':
 		
 	# create the dataloader
 	if args.sampler:
-		train_sampler = BalanceClassSamplerMultilabel(steel_ds_train, args.sample_times * len(steel_ds_train))
+		train_sampler = BalanceClassSamplerMultilabel(steel_ds_train, args)
 		trainloader = torch.utils.data.DataLoader(steel_ds_train, 
                                                    batch_size = args.batch, num_workers = 4,
                                                    sampler = train_sampler, drop_last = True,)
@@ -429,7 +431,7 @@ if __name__ == '__main__':
 		# eva.plot_sampled_predict()
 
 		# evaluate the prediction
-		sout = '\nFinal Dice {:.3f}\n'.format(dice/len(VALID_FILES)/4) +\
+		sout = '\nFinal Dice {:.3f}\n'.format(dice) +\
 			'==============Predict===============\n' + \
 			analyze_labels(pd.DataFrame(dicPred)) # +\
 		#	'==============True===============\n' + \

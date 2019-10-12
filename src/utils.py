@@ -21,6 +21,7 @@ def rle2mask(mask_rle, width, height):
 		img[lo:hi] = 1
 	return img.reshape(shape).T
 
+
 def mask2rle(img):
 	'''
 	img: numpy array, 1 - mask, 0 - background
@@ -70,6 +71,7 @@ def analyze_labels(stat_df, rows = float('inf')):
 			'Label ratio (Zero labels~four Labels): {:.4f},{:.4f},{:.4f},{:.4f},{:.4f}\n'.format(*[item/total_num for item in label_nums])
 
 	if 'Dice 1' in stat_df.columns:
+		navg = 0
 		for i in range(4):
 			stat_df['Label {:d}'.format(i+1)] = 1*(stat_df['True {:d}'.format(i+1)] > 0)
 			nmean = stat_df['Dice {:d}'.format(i+1)].mean()
@@ -81,6 +83,8 @@ def analyze_labels(stat_df, rows = float('inf')):
 			dice_diff = [dice_num[0]-dice_sum[0], dice_num[1]-dice_sum[1]]
 			print('Category {:d}: Mean {:.4f}, True Area[Neg,{:.4f}; Pos,{:.4f}], Pred Dice[Neg,{:.4f}; Pos,{:.4f}], Dice Diff[Neg,{:.3f}; Pos,{:.3f}]'.\
 				  format(i+1, nmean, *true_avg, *dice_avg, *dice_diff))
+			navg += nmean
+		print('Averaged Dice:{:.4f}'.format(navg/4))
 	return sres
 
 

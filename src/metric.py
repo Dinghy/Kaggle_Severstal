@@ -14,7 +14,7 @@ def dice_metric_single(A, B):
 	dice = (2*intersection + 1e-8)/(true + pred + 1e-8)
 	return dice
 
-def dice_metric(A, B):
+def dice_metric(A, B, weight = None):
 	# print(A.shape, B.shape)
 	# Numpy version   
 	if len(A.shape) == 2 and len(B.shape) == 2:
@@ -34,6 +34,10 @@ def dice_metric(A, B):
 	metric = 0.0
 	
 	for batch in range(batch_size):
+		if weight is not None:
+			iweight = weight[batch]
+		else:
+			iweight = 1
 		for ch in range(channel_num):
 			t, p = A[batch, ch, :, :], B[batch, ch, :, :]
 			true = np.sum(t)
@@ -48,5 +52,5 @@ def dice_metric(A, B):
 			# hence it is safe to divide by its number of pixels
 			intersection = np.sum(t * p)
 			dice = (2*intersection + 1e-8)/(true + pred + 1e-8)
-			metric += dice
+			metric += dice*iweight
 	return metric

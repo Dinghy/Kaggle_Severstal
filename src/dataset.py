@@ -294,15 +294,14 @@ class SteelOneDataset(Dataset):
 
 # https://www.kaggle.com/c/siim-acr-pneumothorax-segmentation/discussion/97456
 class BalanceClassSamplerMultilabel(Sampler):
-    def __init__(self, dataset, length=None):
+    def __init__(self, dataset, args):
         self.dataset = dataset
-        if length is None:
-            length = len(self.dataset)
-        self.length = int(length)
+        self.ratio = args.sample_ratio
+        self.length =  args.sample_times * len(self.dataset)
 
 
     def __iter__(self):
-        p1, p2, p3, p4, p5 = 0.123, 0.028, 0.89, 0.08, 0.80
+        p1, p2, p3, p4, p5 = 0.123, 0.028, self.ratio, 0.08, 0.80
         p = self.dataset.arrtags[:,0]/p1 + self.dataset.arrtags[:,1]/p2 +\
 			self.dataset.arrtags[:,2]/p3 + self.dataset.arrtags[:,3]/p4 + self.dataset.arrtags[:,4]/p5
         p /= p.sum()
