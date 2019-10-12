@@ -113,11 +113,11 @@ class EvaluateOneCategory:
             
             # using bayes optimize to determine the threshold
             if self.args.output == 0:
-                pbounds = {'thres_seg': (0.1, 0.7), 'size_seg': (500, 6000), 'thres_after': (0.1, 0.7)}
+                pbounds = {'thres_seg': (0.5, 0.7), 'size_seg': (500, 3000), 'thres_after': (0.1, 0.7)}
             elif self.args.output == 1:
-                pbounds = {'thres_seg': (0.1, 0.7), 'size_seg': (500, 6000), 'thres_oth':(0.1, 0.7), 'size_oth':(500, 6000)}
+                pbounds = {'thres_seg': (0.5, 0.7), 'size_seg': (500, 3000), 'thres_oth':(0.1, 0.7), 'size_oth':(500, 6000)}
             elif self.args.output == 2:
-                pbounds = {'thres_seg': (0.1, 0.7), 'size_seg': (500, 6000), 'thres_oth':(0.1, 0.7), 'size_oth':(500, 6000)}
+                pbounds = {'thres_seg': (0.5, 0.7), 'size_seg': (500, 3000), 'thres_oth':(0.1, 0.7), 'size_oth':(500, 6000)}
             optimizer = BayesianOptimization(f = cal_dice, pbounds = pbounds, random_state = 1)   
             # adjust the bayes opt stage
             if self.args.test_run or self.args.epoch < 5:
@@ -248,7 +248,11 @@ class Evaluate:
 
         # weight for each data sample in the validation set
         if True:
-            valid_df = pd.read_csv('validID.csv')
+            try:
+                valid_df = pd.read_csv('validID.csv')
+            except:
+                valid_df = pd.read_csv('../input/severstal-model/validID.csv')
+                
             self.weight = np.array(valid_df['ratio'])[:len(dataloader.dataset)]
             print(self.weight[:10])
             self.nweight = np.sum(self.weight)
@@ -311,12 +315,13 @@ class Evaluate:
             
             # using bayes optimize to determine the threshold
             if self.args.output == 0:
-                pbounds = {'thres_seg': (0.1, 0.7), 'size_seg' : (500, 6000)}
+                pbounds = {'thres_seg': (0.5, 0.7), 'size_seg' : (500, 6000)}
             elif self.args.output == 1:
-                pbounds = {'thres_seg': (0.1, 0.7), 'size_seg' : (500, 6000), 'thres_oth':(0.1, 0.7), 'size_oth':(500, 6000)}
+                pbounds = {'thres_seg': (0.5, 0.7), 'size_seg' : (500, 6000), \
+                            'thres_oth':(0.2, 0.7), 'size_oth':(500, 6000)}
             elif self.args.output == 2:
-                pbounds = {'thres_seg': (0.1, 0.7), 'size_seg' : (500, 6000), 'thres_after': (0.1, 0.5),\
-                            'thres_oth':(0.1, 0.7)}
+                pbounds = {'thres_seg': (0.5, 0.7), 'size_seg' : (1000, 3000), 
+                           'thres_after': (0.1, 0.5), 'thres_oth':(0.3, 0.7), 'size_oth':(500, 3000)}
             optimizer = BayesianOptimization(f = cal_dice, pbounds = pbounds, random_state = 1)   
             # adjust the bayes opt stage
             if self.args.test_run or self.args.epoch < 5:
@@ -329,7 +334,7 @@ class Evaluate:
             self.dicPara['thres_after{:d}'.format(category+1)] = optimizer.max['params']['thres_after']
             if self.args.output > 0:
                 self.dicPara['thres_oth{:d}'.format(category+1)] = optimizer.max['params']['thres_oth']
-                self.dicPara['size_oth{:d}'.format(category+1)]  = -float('inf') # optimizer.max['params']['size_oth']
+                self.dicPara['size_oth{:d}'.format(category+1)]  = optimizer.max['params']['size_oth']
        
         print(self.dicPara)
         return
