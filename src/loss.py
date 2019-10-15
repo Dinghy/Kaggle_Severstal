@@ -12,8 +12,8 @@ def criterion_weightedBCE(logit, truth, weight = 0, use_weight = True):
 	h, w = 2, 3
 	# use weighted function
 	if use_weight:
-		pos_weight = np.array([1./0.4, 1./0.1, 1./0.6, 1./0.4]).astype(np.float32)
-		neg_weight = np.array([1./1.6, 1./1.9, 1./1.4, 1./1.6]).astype(np.float32) 
+		pos_weight = np.array([1./0.4, 1./0.1, 3./0.6, 1./0.4]).astype(np.float32)
+		neg_weight = np.array([1./1.6, 1./1.9, 3./1.4, 1./1.6]).astype(np.float32) 
 	# unweighted version
 	else:
 		pos_weight = np.array([1., 1., 1., 1.]).astype(np.float32) 

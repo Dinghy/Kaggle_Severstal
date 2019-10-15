@@ -13,7 +13,7 @@ import torch.nn.functional as F
 import numpy as np
 
 from collections import OrderedDict
-
+from utils import seed_everything
 ############################################
 # SENet Encoder
 class SEModule(nn.Module):

@@ -34,16 +34,28 @@ class Evaluate:
 
     def __init__(self, net, device, dataloader, args, dicPara = None, isTest = True):
         self.args = args
-        self.net = net
+        if not isinstance(net, list):
+            self.net = [net]
+        else:
+            self.net = net
         self.device = device
         self.dataloader = dataloader
         self.dicPara = dicPara
         self.isTest = isTest
 
 
+    def eval_net(self):
+        if isinstance(self.net, list):
+            for net in self.net:
+                net.eval()
+        else:
+            self.net.eval()
+        return
+
+
     def search_parameter(self):
         'Bayes opt to determine the threshold for each label'
-        self.net.eval()
+        self.eval_net()
         # store the parameters
         self.dicPara = {}
 
@@ -67,31 +79,31 @@ class Evaluate:
                     images, labels = data[0], data[1]
                     for image_raw, label_raw in zip(images, labels):
                         # flip and predict
-                        output_merge, output_other = self.predict_flip(image_raw)
+                        output_merge, output_other = self.predict_flip(image_raw, category)
                         true_mask = label_raw[:,:,category].detach().numpy().astype(int)
                         if category == 0:
                             trues.append(mask2rle(true_mask))
-                            preds.append(output_merge[:,:,category])
-                            others.append(output_other[category])
+                            preds.append(output_merge)
+                            others.append(output_other)
                         else:
                             trues[ipos] = mask2rle(true_mask)
-                            preds[ipos] = output_merge[:,:,category]
-                            others[ipos] = output_other[category]
+                            preds[ipos] = output_merge
+                            others[ipos] = output_other
                         ipos += 1
             
             # using bayes optimize to determine the threshold
             if self.args.output == 0:
-                pbounds = {'thres_seg': (0.1, 0.7), 'size_seg' : (500, 6000)}
+                pbounds = {'thres_seg': (0.4, 0.7), 'size_seg' : (500, 6000)}
             elif self.args.output == 1:
                 pbounds = {'thres_seg': (0.1, 0.7), 'size_seg' : (500, 6000), 'thres_oth':(0.1, 0.7), 'size_oth':(500, 6000)}
             elif self.args.output == 2:
-                pbounds = {'thres_seg': (0.1, 0.7), 'size_seg' : (500, 6000), 'thres_oth':(0.1, 0.7), 'size_oth':(500, 6000)}
+                pbounds = {'thres_seg': (0.4, 0.7), 'size_seg' : (500, 4000), 'thres_oth':(0.1, 0.7), 'size_oth':(500, 4000)}
             optimizer = BayesianOptimization(f = cal_dice, pbounds = pbounds, random_state = 1)   
             # adjust the bayes opt stage
             if self.args.test_run or self.args.epoch < 5:
                 optimizer.maximize(init_points = 5, n_iter = 1)
             else:
-                optimizer.maximize(init_points = 20, n_iter = 150)
+                optimizer.maximize(init_points = 200, n_iter = 150)
 
             self.dicPara['thres_seg{:d}'.format(category+1)] = optimizer.max['params']['thres_seg']
             self.dicPara['size_seg{:d}'.format(category+1)]  = optimizer.max['params']['size_seg']
@@ -101,42 +113,90 @@ class Evaluate:
         return
 
 
-    def predict_flip(self, image_raw):
+    def predict_flip(self, image_raw, category):
         'predict the mask for one simple image'
-        output_merge = np.zeros((self.args.height, self.args.width, self.args.category))
-        output_other = np.zeros((1, self.args.category))
         
-        for i in range(4):
-            lr, ud = divmod(i, 2)
-            image = image_raw.detach().numpy()
-            if lr == 1: # flip left to right
-                image = np.fliplr(image)
-            if ud == 1: # flip up to down
-                image = np.flipud(image)
+        # clean the data
+        output_mask = np.zeros((self.args.height, self.args.width))
+        output_label = np.zeros((1,))
 
-            image_flip = torch.from_numpy(image.copy()).unsqueeze(0).to(self.device)
+        # obtain the prediction
+        for net in self.net:
+            for i in range(4):
+                lr, ud = divmod(i, 2)
+                image = image_raw.detach().numpy()   # torch.Size([256, 1600, 3])
+                if lr == 1: # flip left to right
+                    image = np.fliplr(image)
+                if ud == 1: # flip up to down
+                    image = np.flipud(image)
+                # flip the image
+                image_flip = torch.from_numpy(image.copy()).unsqueeze(0).to(self.device)  # torch.Size([1, 256, 1600, 3])
+                # predict
+                preds = net(image_flip.permute(0, 3, 1, 2))
 
-            # obtain the prediction
-            preds = self.net(image_flip.permute(0, 3, 1, 2))
-            if self.args.output == 0:   # vanilla
-                outputs = torch.sigmoid(preds).permute(0, 2, 3, 1).detach().cpu().numpy()[0]
-            elif self.args.output == 1: # regression
-                outputs = torch.sigmoid(preds[0]).permute(0, 2, 3, 1).detach().cpu().numpy()[0]
-                output_other += preds[1].detach().cpu().numpy()/4
-            elif self.args.output == 2: # classification
-                outputs = torch.sigmoid(preds[0]).permute(0, 2, 3, 1).detach().cpu().numpy()[0]
-                output_other += torch.sigmoid(preds[1]).detach().cpu().numpy()/4
+                if self.args.output == 0:   # vanilla
+                    outputs = torch.sigmoid(preds).permute(0, 2, 3, 1).detach().cpu().numpy()[0,:,:,category]
+                elif self.args.output == 1: # regression
+                    outputs = torch.sigmoid(preds[0]).permute(0, 2, 3, 1).detach().cpu().numpy()[0,:,:,category]
+                    output_label += preds[1].detach().cpu().numpy()[0,category]
+                elif self.args.output == 2: # classification
+                    outputs = torch.sigmoid(preds[0]).permute(0, 2, 3, 1).detach().cpu().numpy()[0,:,:,category]
+                    output_label += torch.sigmoid(preds[1]).detach().cpu().numpy()[0,category]
 
-            # flip the predicted results
-            if lr == 1: # flip the prediction from right to left
-                outputs = np.fliplr(outputs)
-            if ud == 1:
-                outputs = np.flipud(outputs)
-            # merge the result
-            output_merge += outputs/4
-        return output_merge, output_other[0]
+                # flip the predicted results
+                if lr == 1: # flip the prediction from right to left
+                    outputs = np.fliplr(outputs)  # (256, 1600, 4)
+                if ud == 1:
+                    outputs = np.flipud(outputs)
 
+                # merge the result
+                output_mask += outputs
 
+        return output_mask/4/len(self.net), output_label/4/len(self.net)
+
+    def predict_flip_batch(self, images):
+        'Same as predict flip but deal with a batch of images'
+        # clean the data
+        self.output_mask = np.zeros((images.shape[0], self.args.height, self.args.width, self.args.category))
+        self.output_label =  np.zeros((images.shape[0], self.args.category))
+
+        # obtain the prediction
+        for net in self.net:
+            for i in range(4):
+                lr, ud = divmod(i, 2)
+                images_batch = images.clone()
+                # torch.Size([8, 3, 256, 1600])
+                if lr == 1: # flip left to right
+                    images_batch = torch.flip(images_batch, [3])
+                if ud == 1: # flip up to down
+                    images_batch = torch.flip(images_batch, [2])
+                
+                # predict
+                preds = net(images_batch)
+
+                # rectify the output
+                if self.args.output == 0:   # vanilla
+                    masks = torch.sigmoid(preds)
+                elif self.args.output == 1: # regression
+                    masks = torch.sigmoid(preds[0])
+                    labels = preds[1]
+                elif self.args.output == 2: # classification
+                    masks = torch.sigmoid(preds[0])
+                    labels = torch.sigmoid(preds[1])
+  
+                # flip the predicted results
+                if lr == 1: # flip the prediction from right to left
+                    masks = torch.flip(masks, [3])  # (256, 1600, 4)
+                if ud == 1:
+                    masks = torch.flip(masks, [2])
+                    
+                # merge the result
+                self.output_mask += masks.permute(0, 2, 3, 1).detach().cpu().numpy()
+                self.output_label += labels.detach().cpu().numpy()
+
+        return self.output_mask/4/len(self.net), self.output_label/4/len(self.net)
+
+    
     def predict_dataloader(self, to_rle = False, fnames = None):
         if self.dicPara is None:
             self.search_parameter()
@@ -144,7 +204,7 @@ class Evaluate:
         if to_rle and fnames is None:
             raise ValueError('File names are not given.')
 
-        self.net.eval()
+        self.eval_net()
         dicPred = dict()
         for classid in range(self.args.category):
             dicPred['Class '+str(classid+1)] = []
@@ -158,13 +218,14 @@ class Evaluate:
             
         with torch.no_grad():
             for data in tqdm(self.dataloader):
-                images, labels = data[0], data[1]
-                for image_raw, label_raw in zip(images, labels):
-                    # flip and predicted
-                    output_merge, output_other = self.predict_flip(image_raw)
+                images, labels = data[0].to(self.device), data[1].to(self.device)
+                images = images.permute(0, 3, 1, 2)
+                output_masks, output_labels = self.predict_flip_batch(images)
+               
+                for output_mask, output_label, label_raw in zip(output_masks, output_labels, labels):
         
                     # using simple threshold and output the result
-                    output_thres = post_process(output_merge, output_other, self.dicPara)
+                    output_thres = post_process(output_mask, output_label, self.dicPara)
                     # transfer into the rles
                     # record the predicted labels
                     for category in range(self.args.category):
@@ -178,23 +239,17 @@ class Evaluate:
                         dicPred['Class {:d}'.format(category+1)].append(area_ratio(output_thres[:,:,category]))
                         
                         if not self.isTest:
-                            dice_cat = dice_metric(label_raw[:,:,category].detach().numpy(), output_thres[:,:,category])
+                            dice_cat = dice_metric(label_raw[:,:,category].detach().cpu().numpy(), output_thres[:,:,category])
                             dicPred['Dice {:d}'.format(category+1)].append(dice_cat)
-                            dicPred['True {:d}'.format(category+1)].append(area_ratio(label_raw[:,:,category].detach().numpy()))
-                            
+                            dicPred['True {:d}'.format(category+1)].append(area_ratio(label_raw[:,:,category].detach().cpu().numpy()))
+                            dice  += dice_cat
                     ipos += 1
-                    # calculate the dice if it is not a test dataloader
-                    if not self.isTest:
-                        # print(label_raw.shape, label_raw.min(), label_raw.max())
-                        # print(output_thres.shape, output_thres.min(), output_thres.max())
-                        dice += dice_metric(label_raw.detach().numpy(), output_thres)
-                        # print(ipos, dice)
         
         keys = [key for key in dicPred.keys()]
         for key in keys:
             if len(dicPred[key]) == 0:
                 dicPred.pop(key, None)
-        return dice, dicPred, dicSubmit
+        return dice/len(self.dataloader.dataset)/self.args.category, dicPred, dicSubmit
 
 
     def plot_sampled_predict(self):
@@ -202,28 +257,28 @@ class Evaluate:
         if self.dicPara is None:
             self.search_parameter()
 
-        self.net.eval()
+        self.eval_net()
         iplot = 0
         fig, axs = plt.subplots(self.args.batch, 2, figsize=(16,16))
         
         with torch.no_grad():
             for data in tqdm(self.dataloader):
-                images, labels = data[0], data[1]
-                for image_raw, label_raw in zip(images, labels):
-                    # flip and predict
-                    output_merge, output_other = self.predict_flip(image_raw)
-            
+                images, labels = data[0].to(self.device).permute(0,3,1,2), data[1].to(self.device)
+                
+                output_masks, output_labels = self.predict_flip_batch(images)
+
+                for output_mask, output_label, image_raw, label_raw in zip(output_masks, output_labels, images, labels):
                     # using simple threshold and output the result
-                    output_thres = post_process(output_merge, output_other, self.dicPara)
-            
+                    output_thres = post_process(output_mask, output_label, self.dicPara)
+                    image_raw = image_raw.permute(1,2,0)
                     # plot
                     if iplot < self.args.batch:
                         ax = axs[iplot, 0]
-                        plot_mask(image_raw.detach().numpy(), output_thres, ax)
+                        plot_mask(image_raw.detach().cpu().numpy(), output_thres, ax)
                         ax.axis('off')
 
                         ax = axs[iplot, 1]
-                        plot_mask(image_raw.detach().numpy(), label_raw.detach().numpy(), ax)
+                        plot_mask(image_raw.detach().cpu().numpy(), label_raw.detach().cpu().numpy(), ax)
                         ax.axis('off')
                         iplot += 1
 

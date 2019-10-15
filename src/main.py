@@ -407,8 +407,8 @@ if __name__ == '__main__':
 
 	########################################################################
 	# Model
-	if args.model == 'resnet34':
-		net = Unet("resnet34", encoder_weights="imagenet", classes = 4, activation = None, args = args).to(device)  # pass model specification to the resnet32
+	if args.model == 'resnet34' or args.model == 'se_resnet50':
+		net = Unet(args.model, encoder_weights="imagenet", classes = 4, activation = None, args = args).to(device)  # pass model specification to the resnet32
 	else:
 		raise NotImplementedError
 	
@@ -500,7 +500,7 @@ if __name__ == '__main__':
 		eva.plot_sampled_predict()
 	
 		# evaluate the prediction
-		sout = '\n\nFinal SWA Dice {:.3f}\n'.format(dice/len(VALID_FILES)/4) +\
+		sout = '\n\nFinal SWA Dice {:.3f}\n'.format(dice) +\
 			'==============SWA Predict===============\n' + \
                         analyze_labels(pd.DataFrame(dicPred)) + \
                         '==============True===============\n' + \
