@@ -101,7 +101,7 @@ class Evaluate:
             optimizer = BayesianOptimization(f = cal_dice, pbounds = pbounds, random_state = 1)   
             # adjust the bayes opt stage
             if self.args.test_run or self.args.epoch < 5:
-                optimizer.maximize(init_points = 5, n_iter = 1)
+                optimizer.maximize(init_points = 30, n_iter = 1)
             else:
                 optimizer.maximize(init_points = 200, n_iter = 150)
 
@@ -249,6 +249,8 @@ class Evaluate:
         for key in keys:
             if len(dicPred[key]) == 0:
                 dicPred.pop(key, None)
+        # print the dictionary of parameters
+        print(self.dicPara)
         return dice/len(self.dataloader.dataset)/self.args.category, dicPred, dicSubmit
 
 
