@@ -56,12 +56,251 @@ Experiment log
 		Category 4: Mean 0.9797, True Area[Neg,0.0000; Pos,0.0870], Pred Dice[Neg,0.9973; Pos,0.7267], Dice Diff[Neg,5.000; Pos,35.806]
 
 
-		
-Category 1: Mean 0.9697, True Area[Neg,0.0000; Pos,0.0127], Pred Dice[Neg,0.9926; Pos,0.6145], Dice Diff[Neg,14.000; Pos,47.033]
-Category 2: Mean 0.9917, True Area[Neg,0.0000; Pos,0.0093], Pred Dice[Neg,1.0000; Pos,0.5951], Dice Diff[Neg,0.000; Pos,16.603]
-Category 3: Mean 0.8548, True Area[Neg,0.0000; Pos,0.0634], Pred Dice[Neg,0.9656; Pos,0.7032], Dice Diff[Neg,40.000; Pos,251.970]
-Category 4: Mean 0.9812, True Area[Neg,0.0000; Pos,0.0870], Pred Dice[Neg,0.9984; Pos,0.7336], Dice Diff[Neg,3.000; Pos,34.893]
 
+2019/10/06
+1. Resnet 34
+	1)
+	# check new augmentations
+	python train_multi.py --model 'resnet34' --loss 2 --sch 2 --output 2 --epoch 40
+	python train_multi.py --model 'resnet34' --loss 2 --sch 2 --output 2 --epoch 40 --load_mod
+
+	Result:
+		Epoch 39 :Train_loss:0.183 Train_dice:0.923 Train_other:0.992 Valid_loss:0.181 Valid_dice:0.922 Valid_other:0.982
+
+		0.9707  ^[[0m | ^[[95m 3.795e+0^[[0m | ^[[95m 585.4   ^[[0m | ^[[95m 0.3374  ^[[0m | ^[[95m 0.3602  ^[[0m | ^[[95m 0.5844  ^[[0m |
+
+	2)
+	# original model
+	python train_multi.py --model 'resnet34' --loss 2 --sch 2 --output 2 --epoch 40 --conservative
+	python train_multi.py --model 'resnet34' --loss 2 --sch 2 --output 2 --epoch 40 --conservative --load_mod
+
+	Result:
+		Epoch 39 :Train_loss:0.184 Train_dice:0.927 Train_other:0.993 Valid_loss:0.184 Valid_dice:0.929 Valid_other:0.983
+
+		0.9705  ^[[0m | ^[[95m 5.845e+0^[[0m | ^[[95m 1.021e+0^[[0m | ^[[95m 0.4367  ^[[0m | ^[[95m 0.5111  ^[[0m | ^[[95m 0.3925  ^[[0m |
+
+	3)
+	# check new loss and sampler
+	python train_multi.py --model 'resnet34' --loss 3 --sch 2 --output 2 --epoch 40 --sampler --sample_times 1
+	python train_multi.py --model 'resnet34' --loss 3 --sch 2 --output 2 --epoch 40 --sampler --sample_times 1 --load_mod
+
+	Result:
+		Epoch 39 :Train_loss:0.213 Train_dice:0.928 Train_other:0.995 Valid_loss:0.172 Valid_dice:0.932 Valid_other:0.981
+
+		0.9717  ^[[0m | ^[[95m 3.928e+0^[[0m | ^[[95m 587.0   ^[[0m | ^[[95m 0.4718  ^[[0m | ^[[95m 0.5145  ^[[0m | ^[[95m 0.6984  ^[[0m |
+
+	4)
+	# check the sampling times
+	python train_multi.py --model 'resnet34' --loss 3 --sch 2 --output 2 --epoch 40 --sampler --sample_times 2
+	python train_multi.py --model 'resnet34' --loss 3 --sch 2 --output 2 --epoch 40 --sampler --sample_times 2 --load_mod
+
+	Result:
+		Epoch 39 :Train_loss:0.163 Train_dice:1.888 Train_other:1.994 Valid_loss:0.171 Valid_dice:0.934 Valid_other:0.983
+
+		0.9733  ^[[0m | ^[[95m 3.902e+0^[[0m | ^[[95m 557.0   ^[[0m | ^[[95m 0.3155  ^[[0m | ^[[95m 0.1018  ^[[0m | ^[[95m 0.6707  ^[[0m |
+
+2. Se-resnet50
+
+	1)
+	# check new augmentations
+	python train_multi.py --model 'se_resnet50' --loss 2 --sch 2 --output 2 --epoch 40
+	python train_multi.py --model 'se_resnet50' --loss 2 --sch 2 --output 2 --epoch 40 --load_mod
+
+	Result:
+		Epoch 39 :Train_loss:0.178 Train_dice:0.936 Train_other:0.991 Valid_loss:0.172 Valid_dice:0.938 Valid_other:0.984
+
+		0.9705  ^[[0m | ^[[95m 3.928e+0^[[0m | ^[[95m 587.0   ^[[0m | ^[[95m 0.4718  ^[[0m | ^[[95m 0.5145  ^[[0m | ^[[95m 0.6984  ^[[0m |
+
+	2)
+	# original model
+	python train_multi.py --model 'se_resnet50' --loss 2 --sch 2 --output 2 --epoch 40 --conservative
+	python train_multi.py --model 'se_resnet50' --loss 2 --sch 2 --output 2 --epoch 40 --conservative --load_mod
+
+	Result:
+
+		Epoch 39 :Train_loss:0.176 Train_dice:0.935 Train_other:0.991 Valid_loss:0.167 Valid_dice:0.934 Valid_other:0.984
+
+		Category 1: Mean 0.9707, True Area[Neg,0.0000; Pos,0.0127], Pred Dice[Neg,0.9942; Pos,0.6076], Dice Diff[Neg,11.000; Pos,47.878]
+		Category 2: Mean 0.9912, True Area[Neg,0.0000; Pos,0.0093], Pred Dice[Neg,0.9995; Pos,0.5938], Dice Diff[Neg,1.000; Pos,16.655]
+		Category 3: Mean 0.8611, True Area[Neg,0.0000; Pos,0.0634], Pred Dice[Neg,0.9750; Pos,0.7052], Dice Diff[Neg,29.000; Pos,250.327]
+		Category 4: Mean 0.9808, True Area[Neg,0.0000; Pos,0.0870], Pred Dice[Neg,0.9984; Pos,0.7280], Dice Diff[Neg,3.000; Pos,35.633]
+
+	3)
+	# check new loss and sampler
+	python train_multi.py --model 'se_resnet50' --loss 3 --sch 2 --output 2 --epoch 40 --sampler --sample_times 1
+	python train_multi.py --model 'se_resnet50' --loss 3 --sch 2 --output 2 --epoch 40 --sampler --sample_times 1 --load_mod
+
+	Result:
+
+		Epoch 39 :Train_loss:0.197 Train_dice:0.937 Train_other:0.994 Valid_loss:0.155 Valid_dice:0.943 Valid_other:0.984
+
+		0.975   ^[[0m | ^[[95m 3.795e+0^[[0m | ^[[95m 585.4   ^[[0m | ^[[95m 0.3374  ^[[0m | ^[[95m 0.3602  ^[[0m | ^[[95m 0.5844  ^[[0m |
+
+	4)
+	# check the sampling times
+	python train_multi.py --model 'se_resnet50' --loss 3 --sch 2 --output 2 --epoch 40 --sampler --sample_times 2
+	python train_multi.py --model 'se_resnet50' --loss 3 --sch 2 --output 2 --epoch 40 --sampler --sample_times 2 --load_mod
+
+
+
+Sample Ratio
+	Ratio = 0.2
+	Not conservative
+	Category 1: Mean 0.9612, True Area[Neg,0.0000; Pos,0.0105], Pred Dice[Neg,0.9957; Pos,0.5139], Dice Diff[Neg,8.000; Pos,69.995]
+	Category 2: Mean 0.9874, True Area[Neg,0.0000; Pos,0.0081], Pred Dice[Neg,0.9975; Pos,0.4904], Dice Diff[Neg,5.000; Pos,20.383]
+	Category 3: Mean 0.7481, True Area[Neg,0.0000; Pos,0.0632], Pred Dice[Neg,0.8281; Pos,0.6327], Dice Diff[Neg,204.000; Pos,302.664]
+	Category 4: Mean 0.9727, True Area[Neg,0.0000; Pos,0.0762], Pred Dice[Neg,0.9926; Pos,0.6810], Dice Diff[Neg,14.000; Pos,40.835]
+	Average Dice: 0.9173448886891
+
+	Conservative
+	Category 1: Mean 0.9580, True Area[Neg,0.0000; Pos,0.0105], Pred Dice[Neg,0.9930; Pos,0.5034], Dice Diff[Neg,13.000; Pos,71.507]
+	Category 2: Mean 0.9897, True Area[Neg,0.0000; Pos,0.0081], Pred Dice[Neg,0.9954; Pos,0.7055], Dice Diff[Neg,9.000; Pos,11.782]
+	Category 3: Mean 0.8319, True Area[Neg,0.0000; Pos,0.0632], Pred Dice[Neg,0.9486; Pos,0.6638], Dice Diff[Neg,61.000; Pos,277.060]
+	Category 4: Mean 0.9778, True Area[Neg,0.0000; Pos,0.0762], Pred Dice[Neg,0.9947; Pos,0.7293], Dice Diff[Neg,10.000; Pos,34.644]
+	Average Dice: 0.9393346167782219	
+
+	==================
+	Ratio = 0.4
+	Not conservative
+	Category 1: Mean 0.9620, True Area[Neg,0.0000; Pos,0.0105], Pred Dice[Neg,0.9963; Pos,0.5173], Dice Diff[Neg,7.000; Pos,69.512]
+	Category 2: Mean 0.9913, True Area[Neg,0.0000; Pos,0.0081], Pred Dice[Neg,0.9995; Pos,0.5897], Dice Diff[Neg,1.000; Pos,16.413]
+	Category 3: Mean 0.8118, True Area[Neg,0.0000; Pos,0.0632], Pred Dice[Neg,0.9217; Pos,0.6535], Dice Diff[Neg,93.000; Pos,285.516]
+	Category 4: Mean 0.9787, True Area[Neg,0.0000; Pos,0.0762], Pred Dice[Neg,0.9952; Pos,0.7361], Dice Diff[Neg,9.000; Pos,33.781]
+	Average Dice: 0.93595
+
+	Conservative
+	Category 1: Mean 0.9577, True Area[Neg,0.0000; Pos,0.0105], Pred Dice[Neg,0.9898; Pos,0.5417], Dice Diff[Neg,19.000; Pos,65.990]
+	Category 2: Mean 0.9904, True Area[Neg,0.0000; Pos,0.0081], Pred Dice[Neg,0.9970; Pos,0.6686], Dice Diff[Neg,6.000; Pos,13.255]
+	Category 3: Mean 0.8247, True Area[Neg,0.0000; Pos,0.0632], Pred Dice[Neg,0.9385; Pos,0.6608], Dice Diff[Neg,73.000; Pos,279.518]
+	Category 4: Mean 0.9824, True Area[Neg,0.0000; Pos,0.0762], Pred Dice[Neg,0.9989; Pos,0.7392], Dice Diff[Neg,2.000; Pos,33.384]
+	Average Dice: 0.93882
+
+	==================
+	Ratio = 0.6
+	Not conservative
+	Category 1: Mean 0.9571, True Area[Neg,0.0000; Pos,0.0105], Pred Dice[Neg,0.9941; Pos,0.4771], Dice Diff[Neg,11.000; Pos,75.293]
+	Category 2: Mean 0.9901, True Area[Neg,0.0000; Pos,0.0081], Pred Dice[Neg,0.9970; Pos,0.6514], Dice Diff[Neg,6.000; Pos,13.944]
+	Category 3: Mean 0.8153, True Area[Neg,0.0000; Pos,0.0632], Pred Dice[Neg,0.9478; Pos,0.6246], Dice Diff[Neg,62.000; Pos,309.365]
+	Category 4: Mean 0.9776, True Area[Neg,0.0000; Pos,0.0762], Pred Dice[Neg,0.9958; Pos,0.7101], Dice Diff[Neg,8.000; Pos,37.108]
+	Average Dice: 0.9350186088713673
+
+
+	Conservative
+	Category 1: Mean 0.9561, True Area[Neg,0.0000; Pos,0.0105], Pred Dice[Neg,0.9898; Pos,0.5189], Dice Diff[Neg,19.000; Pos,69.285]
+	Category 2: Mean 0.9909, True Area[Neg,0.0000; Pos,0.0081], Pred Dice[Neg,0.9980; Pos,0.6412], Dice Diff[Neg,4.000; Pos,14.354]
+	Category 3: Mean 0.8152, True Area[Neg,0.0000; Pos,0.0632], Pred Dice[Neg,0.9402; Pos,0.6352], Dice Diff[Neg,71.000; Pos,300.633]
+	Category 4: Mean 0.9814, True Area[Neg,0.0000; Pos,0.0762], Pred Dice[Neg,0.9984; Pos,0.7316], Dice Diff[Neg,3.000; Pos,34.353]
+	Average Dice: 0.9358993818459935
+
+
+	==================
+	Ratio = 0.8
+	Not conservative
+	Category 1: Mean 0.9358, True Area[Neg,0.0000; Pos,0.0105], Pred Dice[Neg,0.9957; Pos,0.1583], Dice Diff[Neg,8.000; Pos,121.205]
+	Category 2: Mean 0.9891, True Area[Neg,0.0000; Pos,0.0081], Pred Dice[Neg,0.9954; Pos,0.6765], Dice Diff[Neg,9.000; Pos,12.941]
+	Category 3: Mean 0.7402, True Area[Neg,0.0000; Pos,0.0632], Pred Dice[Neg,0.9048; Pos,0.5032], Dice Diff[Neg,113.000; Pos,409.391]
+	Category 4: Mean 0.9764, True Area[Neg,0.0000; Pos,0.0762], Pred Dice[Neg,0.9958; Pos,0.6910], Dice Diff[Neg,8.000; Pos,39.546]
+	Average Dice: 0.91038
+
+	Conservative
+	Category 1: Mean 0.9590, True Area[Neg,0.0000; Pos,0.0105], Pred Dice[Neg,0.9925; Pos,0.5246], Dice Diff[Neg,14.000; Pos,68.453]
+	Category 2: Mean 0.9905, True Area[Neg,0.0000; Pos,0.0081], Pred Dice[Neg,0.9970; Pos,0.6717], Dice Diff[Neg,6.000; Pos,13.132]
+	Category 3: Mean 0.8093, True Area[Neg,0.0000; Pos,0.0632], Pred Dice[Neg,0.9250; Pos,0.6427], Dice Diff[Neg,89.000; Pos,294.435]
+	Category 4: Mean 0.9800, True Area[Neg,0.0000; Pos,0.0762], Pred Dice[Neg,0.9989; Pos,0.7022], Dice Diff[Neg,2.000; Pos,38.123]
+	Average Dice: 0.93472
+
+
+2019/10/12
+
+	===============================================
+	Resnet 0.4, Sampler
+
+	Weighted Dice 0.9395     Unweighted Dice 0.9438
+	Category 1: Mean 0.9631, True Area[Neg,0.0000; Pos,0.0105], Pred Dice[Neg,0.9968; Pos,0.5257], Dice Diff[Neg,6.000; Pos,68.304]
+	Category 2: Mean 0.9906, True Area[Neg,0.0000; Pos,0.0081], Pred Dice[Neg,0.9985; Pos,0.6048], Dice Diff[Neg,3.000; Pos,15.809]
+	Category 3: Mean 0.8405, True Area[Neg,0.0000; Pos,0.0630], Pred Dice[Neg,0.9570; Pos,0.6725], Dice Diff[Neg,51.000; Pos,269.834]
+	Category 4: Mean 0.9808, True Area[Neg,0.0000; Pos,0.0762], Pred Dice[Neg,0.9973; Pos,0.7382], Dice Diff[Neg,5.000; Pos,33.512]
+	Averaged Dice:0.9438
+
+	Weighted Dice 0.9391     Unweighted Dice 0.9432
+	Category 1: Mean 0.9613, True Area[Neg,0.0000; Pos,0.0105], Pred Dice[Neg,0.9920; Pos,0.5644], Dice Diff[Neg,15.000; Pos,62.726]
+	Category 2: Mean 0.9909, True Area[Neg,0.0000; Pos,0.0081], Pred Dice[Neg,0.9990; Pos,0.5922], Dice Diff[Neg,2.000; Pos,16.312]
+	Category 3: Mean 0.8399, True Area[Neg,0.0000; Pos,0.0630], Pred Dice[Neg,0.9587; Pos,0.6687], Dice Diff[Neg,49.000; Pos,272.966]
+	Category 4: Mean 0.9808, True Area[Neg,0.0000; Pos,0.0762], Pred Dice[Neg,0.9973; Pos,0.7382], Dice Diff[Neg,5.000; Pos,33.512]
+	Averaged Dice:0.9432
+
+	===============================================
+	Resnet 0.2, Sampler
+
+	Weighted Dice 0.9351     Unweighted Dice 0.9430
+	Category 1: Mean 0.9601, True Area[Neg,0.0000; Pos,0.0105], Pred Dice[Neg,0.9936; Pos,0.5267], Dice Diff[Neg,12.000; Pos,68.154]
+	Category 2: Mean 0.9899, True Area[Neg,0.0000; Pos,0.0081], Pred Dice[Neg,0.9964; Pos,0.6682], Dice Diff[Neg,7.000; Pos,13.272]
+	Category 3: Mean 0.8403, True Area[Neg,0.0000; Pos,0.0630], Pred Dice[Neg,0.9478; Pos,0.6855], Dice Diff[Neg,62.000; Pos,259.133]
+	Category 4: Mean 0.9816, True Area[Neg,0.0000; Pos,0.0762], Pred Dice[Neg,0.9973; Pos,0.7507], Dice Diff[Neg,5.000; Pos,31.911]
+	Averaged Dice:0.9430
+
+	Weighted Dice 0.9363     Unweighted Dice 0.9433
+	Category 1: Mean 0.9608, True Area[Neg,0.0000; Pos,0.0105], Pred Dice[Neg,0.9957; Pos,0.5087], Dice Diff[Neg,8.000; Pos,70.741]
+	Category 2: Mean 0.9904, True Area[Neg,0.0000; Pos,0.0081], Pred Dice[Neg,0.9985; Pos,0.5921], Dice Diff[Neg,3.000; Pos,16.315]
+	Category 3: Mean 0.8402, True Area[Neg,0.0000; Pos,0.0630], Pred Dice[Neg,0.9444; Pos,0.6901], Dice Diff[Neg,66.000; Pos,255.331]
+	Category 4: Mean 0.9819, True Area[Neg,0.0000; Pos,0.0762], Pred Dice[Neg,0.9979; Pos,0.7468], Dice Diff[Neg,4.000; Pos,32.410]
+	Averaged Dice:0.9433
+
+	===============================================
+	SeResNet 0.4, Sampler
+
+	Weighted Dice 0.9446     Unweighted Dice 0.9505
+	Category 1: Mean 0.9677, True Area[Neg,0.0000; Pos,0.0105], Pred Dice[Neg,0.9941; Pos,0.6258], Dice Diff[Neg,11.000; Pos,53.889]
+	Category 2: Mean 0.9915, True Area[Neg,0.0000; Pos,0.0081], Pred Dice[Neg,0.9985; Pos,0.6489], Dice Diff[Neg,3.000; Pos,14.042]
+	Category 3: Mean 0.8614, True Area[Neg,0.0000; Pos,0.0630], Pred Dice[Neg,0.9663; Pos,0.7103], Dice Diff[Neg,40.000; Pos,238.678]
+	Category 4: Mean 0.9811, True Area[Neg,0.0000; Pos,0.0762], Pred Dice[Neg,0.9963; Pos,0.7582], Dice Diff[Neg,7.000; Pos,30.956]
+	Averaged Dice:0.9505
+
+	{'thres_seg1': 0.21969732768313682, 'size_seg1': 856.0699089285188, 'thres_after1': 0.4965386034927236, 
+	'thres_oth1': 0.13179672560079372, 'size_oth1': -inf, 
+	'thres_seg2': 0.5071295222747962, 'size_seg2': 793.9601522865278, 'thres_after2': 0.3892032612022004, 
+	'thres_oth2': 0.6663862386481367, 'size_oth2': -inf, 
+	'thres_seg3': 0.7, 'size_seg3': 730.5694650754097, 'thres_after3': 0.5, 
+	'thres_oth3': 0.7, 'size_oth3': -inf, 
+	'thres_seg4': 0.5022805061070413, 'size_seg4': 1624.487373523346, 'thres_after4': 0.4512469745563782, 
+	'thres_oth4': 0.1164325559187557, 'size_oth4': -inf}
+
+
+	Weighted Dice 0.9448     Unweighted Dice 0.9502
+	Category 1: Mean 0.9677, True Area[Neg,0.0000; Pos,0.0105], Pred Dice[Neg,0.9941; Pos,0.6258], Dice Diff[Neg,11.000; Pos,53.889]
+	Category 2: Mean 0.9912, True Area[Neg,0.0000; Pos,0.0081], Pred Dice[Neg,0.9995; Pos,0.5813], Dice Diff[Neg,1.000; Pos,16.750]
+	Category 3: Mean 0.8609, True Area[Neg,0.0000; Pos,0.0630], Pred Dice[Neg,0.9663; Pos,0.7092], Dice Diff[Neg,40.000; Pos,239.650]
+	Category 4: Mean 0.9811, True Area[Neg,0.0000; Pos,0.0762], Pred Dice[Neg,0.9963; Pos,0.7582], Dice Diff[Neg,7.000; Pos,30.956]
+	Averaged Dice:0.9502
+
+    {'thres_seg1': 0.21969732768313682, 'size_seg1': 856.0699089285188, 'thres_after1': 0.4965386034927236, 
+    'thres_oth1': 0.13179672560079372, 'size_oth1': -inf, 
+    'thres_seg2': 0.5662589375654697, 'size_seg2': 1101.6060280647152, 'thres_after2': 0.3692164216866488, 
+    'thres_oth2': 0.39995942265952, 'size_oth2': -inf, 
+    'thres_seg3': 0.6934688760123228, 'size_seg3': 766.9145515921339, 'thres_after3': 0.4931664159011214, 
+    'thres_oth3': 0.3234447205375589, 'size_oth3': -inf, 
+    'thres_seg4': 0.5022805061070413, 'size_seg4': 1624.487373523346, 'thres_after4': 0.4512469745563782, 
+    'thres_oth4': 0.1164325559187557, 'size_oth4': -inf}
+
+	===============================================
+	SeResNet 0.2, Sampler
+
+	Weighted Dice 0.9420     Unweighted Dice 0.9481
+	Category 1: Mean 0.9641, True Area[Neg,0.0000; Pos,0.0105], Pred Dice[Neg,0.9914; Pos,0.6104], Dice Diff[Neg,16.000; Pos,56.107]
+	Category 2: Mean 0.9908, True Area[Neg,0.0000; Pos,0.0081], Pred Dice[Neg,0.9980; Pos,0.6353], Dice Diff[Neg,4.000; Pos,14.588]
+	Category 3: Mean 0.8561, True Area[Neg,0.0000; Pos,0.0630], Pred Dice[Neg,0.9638; Pos,0.7010], Dice Diff[Neg,43.000; Pos,246.382]
+	Category 4: Mean 0.9812, True Area[Neg,0.0000; Pos,0.0762], Pred Dice[Neg,0.9968; Pos,0.7515], Dice Diff[Neg,6.000; Pos,31.802]
+	Averaged Dice:0.9481
+
+
+	Weighted Dice 0.9420     Unweighted Dice 0.9472
+	Category 1: Mean 0.9617, True Area[Neg,0.0000; Pos,0.0105], Pred Dice[Neg,0.9855; Pos,0.6523], Dice Diff[Neg,27.000; Pos,50.073]
+	Category 2: Mean 0.9899, True Area[Neg,0.0000; Pos,0.0081], Pred Dice[Neg,0.9990; Pos,0.5439], Dice Diff[Neg,2.000; Pos,18.244]
+	Category 3: Mean 0.8561, True Area[Neg,0.0000; Pos,0.0630], Pred Dice[Neg,0.9638; Pos,0.7009], Dice Diff[Neg,43.000; Pos,246.457]
+	Category 4: Mean 0.9813, True Area[Neg,0.0000; Pos,0.0762], Pred Dice[Neg,0.9968; Pos,0.7524], Dice Diff[Neg,6.000; Pos,31.696]
+	Averaged Dice:0.9472
+
+	===============================================
 
 
 		
