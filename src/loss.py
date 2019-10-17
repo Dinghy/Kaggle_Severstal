@@ -77,8 +77,8 @@ def criterion_wlovasz_hinge(logit, truth, weight = 0.2):
     bn, ch = logit.shape[:2]
     h, w = 2, 3
     
-    pos_weight = np.array([1, 1, 3, 1]).astype(np.float32)
-    neg_weight = np.array([0.2, 0.2, 0.6, 0.2]).astype(np.float32)
+    pos_weight = np.array([1, 1, 1, 1]).astype(np.float32)
+    neg_weight = np.array([0.2, 0.2, 0.2, 0.2]).astype(np.float32)
     weight = (truth.sum([h, w]) > 0).float() * torch.from_numpy(pos_weight).to(device)+\
              (truth.sum([h, w]) == 0).float() * torch.from_numpy(neg_weight).to(device)
     
@@ -92,6 +92,6 @@ def criterion_wbce_dice(logit, truth, weight = 0):
 
 
 def criterion_wbce_lovasz(logit, truth, weight):
-	return criterion_weightedBCE(logit, truth, use_weight = True) + criterion_wlovasz_hinge(logit, truth, weight)
+	return criterion_weightedBCE(logit, truth, use_weight = True) + criterion_lovasz_hinge(logit, truth, weight)
 
 

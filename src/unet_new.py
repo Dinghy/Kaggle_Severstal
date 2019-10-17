@@ -379,6 +379,47 @@ def get_encoder(name, encoder_weights = None):
 
 ###########################################################
 # Unet decoder
+class CBAM_Module(nn.Module):
+    # https://github.com/bestfitting/kaggle/blob/master/siim_acr/src/layers/layer_util.py
+    def __init__(self, channels, reduction, attention_kernel_size=3):
+        super(CBAM_Module, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.max_pool = nn.AdaptiveMaxPool2d(1)
+        self.fc1 = nn.Conv2d(channels, channels // reduction, kernel_size=1, padding=0)
+        self.relu = nn.ReLU(inplace=True)
+        self.fc2 = nn.Conv2d(channels // reduction, channels, kernel_size=1, padding=0)
+        self.sigmoid_channel = nn.Sigmoid()
+        self.conv_after_concat = nn.Conv2d(2, 1,
+                                           kernel_size = attention_kernel_size,
+                                           stride=1,
+                                           padding = attention_kernel_size//2)
+        self.sigmoid_spatial = nn.Sigmoid()
+
+    def forward(self, x):
+        # Channel attention module
+        module_input = x
+        avg = self.avg_pool(x)
+        mx = self.max_pool(x)
+        avg = self.fc1(avg)
+        mx = self.fc1(mx)
+        avg = self.relu(avg)
+        mx = self.relu(mx)
+        avg = self.fc2(avg)
+        mx = self.fc2(mx)
+        x = avg + mx
+        x = self.sigmoid_channel(x)
+        # Spatial attention module
+        x = module_input * x
+        module_input = x
+        b, c, h, w = x.size()
+        avg = torch.mean(x, 1, True)
+        mx, _ = torch.max(x, 1, True)
+        x = torch.cat((avg, mx), 1)
+        x = self.conv_after_concat(x)
+        x = self.sigmoid_spatial(x)
+        x = module_input * x
+        return x
+
 
 class Conv2dReLU(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, padding=0,
@@ -397,19 +438,33 @@ class Conv2dReLU(nn.Module):
     
     
 class DecoderBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, use_batchnorm=True):
+    def __init__(self, in_channels, out_channels, use_batchnorm = True, use_attention = True):
         super().__init__()
         self.block = nn.Sequential(
             Conv2dReLU(in_channels, out_channels, kernel_size=3, padding=1, use_batchnorm=use_batchnorm),
             Conv2dReLU(out_channels, out_channels, kernel_size=3, padding=1, use_batchnorm=use_batchnorm),
         )
+        self.use_attention = use_attention
+        if self.use_attention:
+            # attention
+            self.channel_gate = CBAM_Module(out_channels, reduction = 16, attention_kernel_size = 3)
+            # resnet link
+            # self.conv = nn.Conv2d(in_channels, out_channels, kernel_size = (1, 1), stride = (1, 1), padding = (0, 0))
+            # self.bn   = nn.BatchNorm2d(out_channels)
+
 
     def forward(self, x):
         x, skip = x
         x = F.interpolate(x, scale_factor=2, mode='nearest')
+        #if self.use_attention:
+        #    shortcut = self.bn(self.conv(x))
+
         if skip is not None:
             x = torch.cat([x, skip], dim=1)
         x = self.block(x)
+        if self.use_attention:
+            x = self.channel_gate(x)
+            # x = F.relu(x+shortcut)            
         return x
 
 
@@ -423,9 +478,10 @@ class UnetDecoder(nn.Module):
             self,
             encoder_channels,
             decoder_channels = (256, 128, 64, 32, 16),
-            final_channels=1,
-            use_batchnorm=True,
-            center=False,
+            final_channels = 1,
+            use_batchnorm = True,
+            center = False,
+            concat_output = True,
     ):
         super().__init__()
 
@@ -444,7 +500,7 @@ class UnetDecoder(nn.Module):
         self.layer4 = DecoderBlock(in_channels[3], out_channels[3], use_batchnorm=use_batchnorm)
         self.layer5 = DecoderBlock(in_channels[4], out_channels[4], use_batchnorm=use_batchnorm)
         self.final_conv = nn.Conv2d(out_channels[4], final_channels, kernel_size=(1, 1))
-
+        self.concat_output = concat_output
         self.initialize()
 
     def compute_channels(self, encoder_channels, decoder_channels):
@@ -463,7 +519,8 @@ class UnetDecoder(nn.Module):
 
         if self.center:
             encoder_head = self.center(encoder_head)
-
+        
+        
         x = self.layer1([encoder_head, skips[0]])
         x = self.layer2([x, skips[1]])
         x = self.layer3([x, skips[2]])

@@ -7,13 +7,21 @@ import matplotlib.pyplot as plt
 from metric import dice_metric
 from utils import mask2rle, rle2mask, plot_mask
 
-def post_process_single(pred, other, thres_seg = 0.5, size_seg = 100, thres_oth = -float('inf'), size_oth = 0):
-    pred = (pred > thres_seg).astype(int)
-    # TTA: combining classification and size thresholding
-    nsize = pred.sum() 
+def post_process_single(pred, other, thres_seg = 0.5, size_seg = 100, thres_oth = -float('inf'), size_oth = 0, thres_after = -float('inf')):
+    if thres_after != -float('inf'):
+        pred_agg = (pred > thres_seg).astype(int)
+        nsize = pred_agg.sum()
+    else:
+        pred = (pred > thres_seg).astype(int)
+        nsize = pred.sum()
+    # TTA: combining classification and size thresholding 
     if nsize < size_seg or (nsize < size_oth+size_seg and other < thres_oth):
-        pred *= 0
-    return pred
+        return pred * 0
+    # additional postprocessing
+    if thres_after != -float('inf'):
+        return (pred > thres_after).astype(int)
+    else:
+        return pred
 
 
 def post_process(pred, other, dicPara):
@@ -59,13 +67,13 @@ class Evaluate:
         # store the parameters
         self.dicPara = {}
 
-        def cal_dice(thres_seg, size_seg, thres_oth=-float('inf'), size_oth=0):
+        def cal_dice(thres_seg, size_seg, thres_oth=-float('inf'), size_oth=0, thres_after = -float('inf')):
             ipos = 0
             dice = 0.0
             for pred, other, true_rle in zip(preds, others, trues):
                 # post process
                 true = rle2mask(true_rle, self.args.width, self.args.height)
-                pred = post_process_single(pred, other, thres_seg, size_seg, thres_oth, size_oth)
+                pred = post_process_single(pred, other, thres_seg, size_seg, thres_oth, size_oth, thres_after)
                 ipos += 1
                 dice += dice_metric(true, pred)
             return dice/len(preds)
@@ -92,24 +100,33 @@ class Evaluate:
                         ipos += 1
             
             # using bayes optimize to determine the threshold
-            if self.args.output == 0:
-                pbounds = {'thres_seg': (0.4, 0.7), 'size_seg' : (500, 6000)}
-            elif self.args.output == 1:
-                pbounds = {'thres_seg': (0.1, 0.7), 'size_seg' : (500, 6000), 'thres_oth':(0.1, 0.7), 'size_oth':(500, 6000)}
-            elif self.args.output == 2:
+            if self.args.eva_method == 0:     # basic operation
+                pbounds = {'thres_seg': (0.4, 0.7), 'size_seg' : (500, 4000)}
+            elif self.args.eva_method == 1 and self.args.output == 2:   # currently used version with classification
                 pbounds = {'thres_seg': (0.4, 0.7), 'size_seg' : (500, 4000), 'thres_oth':(0.1, 0.7), 'size_oth':(500, 4000)}
+            elif self.args.eva_method == 2 and self.args.output == 2:   # adding another thresholding after the conditions with zeros
+                pbounds = {'thres_seg': (0.4, 0.7), 'size_seg' : (500, 4000), 'thres_oth':(0.1, 0.7), 'size_oth':(500, 4000), 'thres_after':(0.3, 0.5)}
             optimizer = BayesianOptimization(f = cal_dice, pbounds = pbounds, random_state = 1)   
+            
             # adjust the bayes opt stage
+            # test
             if self.args.test_run or self.args.epoch < 5:
-                optimizer.maximize(init_points = 30, n_iter = 1)
+                optimizer.maximize(init_points = 10, n_iter = 1)
             else:
                 optimizer.maximize(init_points = 200, n_iter = 150)
-
+            
+            # store the parameters
             self.dicPara['thres_seg{:d}'.format(category+1)] = optimizer.max['params']['thres_seg']
             self.dicPara['size_seg{:d}'.format(category+1)]  = optimizer.max['params']['size_seg']
-            if self.args.output > 0:
+            if self.args.eva_method == 1 and self.args.output == 2:
                 self.dicPara['thres_oth{:d}'.format(category+1)] = optimizer.max['params']['thres_oth']
                 self.dicPara['size_oth{:d}'.format(category+1)]  = optimizer.max['params']['size_oth']
+            elif self.args.eva_method == 2 and self.args.output == 2:
+                self.dicPara['thres_oth{:d}'.format(category+1)] = optimizer.max['params']['thres_oth']
+                self.dicPara['size_oth{:d}'.format(category+1)]  = optimizer.max['params']['size_oth']
+                self.dicPara['thres_after{:d}'.format(category+1)] = optimizer.max['params']['thres_after']
+        
+        print(self.dicPara)
         return
 
 
@@ -153,6 +170,7 @@ class Evaluate:
                 output_mask += outputs
 
         return output_mask/4/len(self.net), output_label/4/len(self.net)
+
 
     def predict_flip_batch(self, images):
         'Same as predict flip but deal with a batch of images'
@@ -250,7 +268,7 @@ class Evaluate:
             if len(dicPred[key]) == 0:
                 dicPred.pop(key, None)
         # print the dictionary of parameters
-        print(self.dicPara)
+        # print(self.dicPara)
         return dice/len(self.dataloader.dataset)/self.args.category, dicPred, dicSubmit
 
 

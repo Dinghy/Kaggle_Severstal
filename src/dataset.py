@@ -3,6 +3,10 @@ import numpy as np
 import pandas as pd
 from torch.utils.data import DataLoader, Dataset, sampler
 
+from albumentations import (Compose, Flip, HorizontalFlip, Normalize, 
+	RandomBrightnessContrast, RandomBrightness, RandomContrast, RandomGamma, OneOf, ToFloat, 
+	RandomSizedCrop, ShiftScaleRotate)
+
 from tqdm import tqdm
 from utils import rle2mask
 
@@ -55,7 +59,15 @@ class SteelDataset(Dataset):
 		self.augment = augment
 		self.args = args
 		self.augTag = self.augment is not None and len([item for item in self.augment]) > 2 and self.args.augment == 2	
-	
+		# normalization
+		if self.args.normalize == 0:
+			norm_mean, norm_std = (0,0,0), (1,1,1)
+		elif self.args.normalize == 1:
+			norm_mean, norm_std = (0.485, 0.456, 0.406), (0.230, 0.225, 0.223)
+		else:
+			norm_mean, norm_std = (0.344, 0.344, 0.344), (0.056, 0.056, 0.056)
+		self.augment_norm = Compose([Normalize(mean = norm_mean, std = norm_std, max_pixel_value = 1.0)], p = 1) 
+
 	def __getitem__(self, idx):
 		'get one image along with its masks on four categories'
 		fpath = self.fpaths[idx]
@@ -78,7 +90,9 @@ class SteelDataset(Dataset):
 			# do additional augmentations for training data set
 			if self.augTag:
 				image, mask = random_crop_shift_pad(image, mask)
-
+			# normalize the image...could be problematic
+			image = self.augment_norm(image = image)['image']
+	
 		# do simple normalization
 		else:
 			image, mask = image/255, mask

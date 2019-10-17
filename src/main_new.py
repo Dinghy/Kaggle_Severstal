@@ -23,7 +23,7 @@ from torch import nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from dataset import SteelDataset
-from unet import Unet
+from unet_new import Unet
 from metric import dice_metric
 from utils import mask2rle, rle2mask, plot_mask, analyze_labels, seed_everything, print2file
 from loss import criterion_wbce_dice, criterion_wbce_lovasz, criterion_wmse, criterion_wbce

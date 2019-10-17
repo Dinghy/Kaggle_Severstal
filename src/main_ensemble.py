@@ -196,6 +196,7 @@ if __name__ == '__main__':
 	parser.add_argument('-s','--swa',    type = int,  default = 4,          help = 'The number of epochs for stochastic weight averaging')
 	parser.add_argument('-o','--output', type = int,  default = 0,          help = 'The type of the network, 0 vanilla, 1 add regression, 2 add classification.')
 	parser.add_argument('--seed',        type = int,  default = 1234,       help = 'The random seed of the algorithm.')
+	parser.add_argument('--eva_method',  type = int,  default = 1,          help = 'The evaluation method in postprocessing: 0 thres/size; 1 thres/size/classify; 2 thres/size/classify/after')
 	args = parser.parse_args()
 
 	seed_everything(seed = args.seed)
@@ -409,7 +410,7 @@ if __name__ == '__main__':
 	# Model
 	nets = []
 	model_types = ['resnet34', 'se_resnet50']
-	model_files = ['weights/model_resnet34_20191016.pth', 'weights/model_seresnet50_20191016.pth']
+	model_files = ['../input/weights/model_resnet34_20191016.pth', '../input/weights/model_seresnet50_20191017.pth']
 	for model_type, model_file in zip(model_types, model_files):
 		print(model_file)
 		net = Unet(model_type, encoder_weights = None, classes = 4, activation = None, args = args).to(device)  # pass model specification to the resnet32
@@ -454,26 +455,7 @@ if __name__ == '__main__':
 	########################################################################
 	# Evaluate the network
 	# get all predictions of the validation set: maybe a memory error here.
-	if args.load_mod:
-		# load the best model
-		# net.load_state_dict(torch.load(MODEL_FILE))
-		# eva = Evaluate(net, device, validloader, args, isTest = False)
-		# eva.search_parameter()
-		# dice, dicPred, dicSubmit = eva.predict_dataloader()
-		# eva.plot_sampled_predict()
-
-		# evaluate the prediction
-		# sout = '\nFinal Dice {:.3f}\n'.format(dice/len(VALID_FILES)/4) +\
-		#	'==============Predict===============\n' + \
-		#	analyze_labels(pd.DataFrame(dicPred)) +\
-		#	'==============True===============\n' + \
-		#	analyze_labels(stat_df_valid)
-		# print(sout)
-		# print2file(sout, LOG_FILE)
-		# print2file(' '.join(str(key)+':'+str(val) for key,val in eva.dicPara.items()), LOG_FILE)
-	
-		# load swa model
-		# net.load_state_dict(torch.load(MODEL_SWA_FILE))
+	if True:
 		eva = Evaluate(nets, device, validloader, args, isTest = False)
 		eva.search_parameter()
 		dice, dicPred, dicSubmit = eva.predict_dataloader()
