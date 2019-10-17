@@ -1,13 +1,13 @@
 # Severstal
 Scripts for Severstal Kaggle Competition
 
+## Training phase
 1. Train a model in a script under FixCheck branch
 
     cd Severstal/src
     
     python main.py --model 'se_resnet50' --sch 2 --loss 2 --output 2 --augment 2 -e 40 --wlovasz 0.2
     
-    python main.py --load_mod --model 'se_resnet50' --sch 2 --loss 2 --output 2 --augment 2 -e 40 --wlovasz 0.2
   
   You will expect the first few epochs result similiar to
   
@@ -19,6 +19,13 @@ Scripts for Severstal Kaggle Competition
 
     Epoch 2 :Train_loss:0.474 Train_dice:0.874 Train_other:0.901 Valid_loss:0.435 Valid_dice:0.892 Valid_other:0.913
     Improving val_dice from 0.892 to 0.906, saving the model
+
+## Inference Phase
+1. Execute the code
+    cd Severstal/src
+    
+    python main.py --load_mod --model 'se_resnet50' --sch 2 --loss 2 --output 2 --augment 2 -e 40 --wlovasz 0.2
+  
 
 2. The second command will evaluate the model with postprocessing methods
     
