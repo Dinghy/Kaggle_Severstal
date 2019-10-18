@@ -183,11 +183,11 @@ if __name__ == '__main__':
 	parser.add_argument('-t','--test_run',action = 'store_true',  default = False,   help = 'Run the script quickly to check all functions')
 	
 	parser.add_argument('--decoder',     type = str,  default = 'cbam_con', help = 'Structure in the Unet decoder')
-	parser.add_argument('--normalize',   type = int,  default = 0,          help = 'Normalize the images or not')
+	parser.add_argument('--normalize',   type = int,  default = 1,          help = 'Normalize the images or not')
 	parser.add_argument('--wlovasz',     type = float,default = 0.2,        help = 'The weight used in Lovasz loss')
 	parser.add_argument('--augment',     type = int,  default = 0,          help = 'The type of train augmentations: 0 vanilla, 1 add contrast, 2 add  ')
-	parser.add_argument('--loss',        type = int,  default = 0,          help = 'The loss: 0 BCE vanilla; 1 wbce+dice; 2 wbce+lovasz.')
-	parser.add_argument('--sch',         type = int,  default = 0,          help = 'The schedule of the learning rate: 0 step; 1 cosine annealing; 2 cosine annealing with warmup.')	
+	parser.add_argument('--loss',        type = int,  default = 2,          help = 'The loss: 0 BCE vanilla; 1 wbce+dice; 2 wbce+lovasz.')
+	parser.add_argument('--sch',         type = int,  default = 2,          help = 'The schedule of the learning rate: 0 step; 1 cosine annealing; 2 cosine annealing with warmup.')	
 	parser.add_argument('-m', '--model', type = str,  default = 'resnet34', help = 'The backbone network of the neural network.')
 	parser.add_argument('-e', '--epoch', type = int,  default = 5,          help = 'The number of epochs in the training')
 	parser.add_argument('--height',      type = int,  default = 256,        help = 'The height of the image')
@@ -195,7 +195,7 @@ if __name__ == '__main__':
 	parser.add_argument('--category',    type = int,  default = 4,          help = 'The category of the problem')
 	parser.add_argument('-b', '--batch', type = int,  default = 8,          help = 'The batch size of the training')
 	parser.add_argument('-s','--swa',    type = int,  default = 4,          help = 'The number of epochs for stochastic weight averaging')
-	parser.add_argument('-o','--output', type = int,  default = 0,          help = 'The type of the network, 0 vanilla, 1 add regression, 2 add classification.')
+	parser.add_argument('-o','--output', type = int,  default = 2,          help = 'The type of the network, 0 vanilla, 1 add regression, 2 add classification.')
 	parser.add_argument('--seed',        type = int,  default = 1234,       help = 'The random seed of the algorithm.')
 	parser.add_argument('--eva_method',  type = int,  default = 1,          help = 'The evaluation method in postprocessing: 0 thres/size; 1 thres/size/classify; 2 thres/size/classify/after')
 	args = parser.parse_args()
@@ -213,7 +213,7 @@ if __name__ == '__main__':
 	TRAIN_MASKS = '../input/severstal-steel-defect-detection/train.csv'
 	
 	# ouput folder paths
-	dicSpec = {'m_':args.model, 'e_':args.epoch, 'norm_':args.normalize, 'sch_':args.sch, 'loss_':args.loss, 'out_':args.output, 'seed_':args.seed}
+	dicSpec = {'dec_':args.decoder, 'm_':args.model, 'e_':args.epoch, 'norm_':args.normalize, 'sch_':args.sch, 'loss_':args.loss, 'out_':args.output, 'seed_':args.seed}
 	strSpec = '_'.join(key+str(val) for key,val in dicSpec.items())
 	
 	VALID_ID_FILE = '../output/validID_{:s}.csv'.format(strSpec)
