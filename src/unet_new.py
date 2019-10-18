@@ -14,6 +14,8 @@ import numpy as np
 
 from collections import OrderedDict
 from utils import seed_everything
+
+import argparse
 ############################################
 # SENet Encoder
 class SEModule(nn.Module):
@@ -482,25 +484,36 @@ class UnetDecoder(nn.Module):
             use_batchnorm = True,
             center = False,
             concat_output = True,
+            use_attention = True,
     ):
         super().__init__()
 
         if center:
             channels = encoder_channels[0]
-            self.center = CenterBlock(channels, channels, use_batchnorm=use_batchnorm)
+            self.center = CenterBlock(channels, channels, use_batchnorm = use_batchnorm)
         else:
             self.center = None
+
+        # concatenate the outputs in the decoder 
+        self.concat_output = concat_output
 
         in_channels = self.compute_channels(encoder_channels, decoder_channels)
         out_channels = decoder_channels
 
-        self.layer1 = DecoderBlock(in_channels[0], out_channels[0], use_batchnorm=use_batchnorm)
-        self.layer2 = DecoderBlock(in_channels[1], out_channels[1], use_batchnorm=use_batchnorm)
-        self.layer3 = DecoderBlock(in_channels[2], out_channels[2], use_batchnorm=use_batchnorm)
-        self.layer4 = DecoderBlock(in_channels[3], out_channels[3], use_batchnorm=use_batchnorm)
-        self.layer5 = DecoderBlock(in_channels[4], out_channels[4], use_batchnorm=use_batchnorm)
-        self.final_conv = nn.Conv2d(out_channels[4], final_channels, kernel_size=(1, 1))
-        self.concat_output = concat_output
+        self.layer1 = DecoderBlock(in_channels[0], out_channels[0], use_batchnorm = use_batchnorm, use_attention = use_attention)
+        self.layer2 = DecoderBlock(in_channels[1], out_channels[1], use_batchnorm = use_batchnorm, use_attention = use_attention)
+        self.layer3 = DecoderBlock(in_channels[2], out_channels[2], use_batchnorm = use_batchnorm, use_attention = use_attention)
+        self.layer4 = DecoderBlock(in_channels[3], out_channels[3], use_batchnorm = use_batchnorm, use_attention = use_attention)
+        self.layer5 = DecoderBlock(in_channels[4], out_channels[4], use_batchnorm = use_batchnorm, use_attention = use_attention)
+        
+        if self.concat_output:
+            self.cbr2 = Conv2dReLU(out_channels[3], 16, kernel_size=1, use_batchnorm=use_batchnorm)
+            self.cbr3 = Conv2dReLU(out_channels[2], 16, kernel_size=1, use_batchnorm=use_batchnorm)
+            self.cbr4 = Conv2dReLU(out_channels[1], 16, kernel_size=1, use_batchnorm=use_batchnorm)
+            self.cbr5 = Conv2dReLU(out_channels[0], 16, kernel_size=1, use_batchnorm=use_batchnorm)
+            self.final_conv = nn.Conv2d(16*5, final_channels, kernel_size=(1, 1))
+        else:
+            self.final_conv = nn.Conv2d(out_channels[4], final_channels, kernel_size=(1, 1))
         self.initialize()
 
     def compute_channels(self, encoder_channels, decoder_channels):
@@ -521,12 +534,22 @@ class UnetDecoder(nn.Module):
             encoder_head = self.center(encoder_head)
         
         
-        x = self.layer1([encoder_head, skips[0]])
-        x = self.layer2([x, skips[1]])
-        x = self.layer3([x, skips[2]])
-        x = self.layer4([x, skips[3]])
-        x = self.layer5([x, None])
-        x = self.final_conv(x)
+        d5 = self.layer1([encoder_head, skips[0]]) # torch.Size([1, 256, 16, 100])
+        d4 = self.layer2([d5, skips[1]])           # torch.Size([1, 128, 32, 200]) 
+        d3 = self.layer3([d4, skips[2]])           # torch.Size([1, 64, 64, 400]) 
+        d2 = self.layer4([d3, skips[3]])           # torch.Size([1, 32, 128, 800]) 
+        d1 = self.layer5([d2, None])               # torch.Size([1, 16, 256, 1600]) 
+
+        if self.concat_output:
+            dconcat = torch.cat((d1,
+                                 F.interpolate(self.cbr2(d2), scale_factor=2, mode='bilinear',align_corners=False),
+                                 F.interpolate(self.cbr3(d3), scale_factor=4, mode='bilinear', align_corners=False),
+                                 F.interpolate(self.cbr4(d4), scale_factor=8, mode='bilinear', align_corners=False),
+                                 F.interpolate(self.cbr5(d5), scale_factor=16, mode='bilinear', align_corners=False),
+                        ), 1)
+            x = self.final_conv(dconcat)
+        else:
+            x = self.final_conv(d1)
 
         return x
     
@@ -581,12 +604,18 @@ class Unet(nn.Module):
             encoder_weights = encoder_weights
         )
 
+        # extract information from the result
+        use_attention = self.args.decoder.find('cbam') != -1
+        concat_output = self.args.decoder.find('con') != -1
+
         self.decoder = UnetDecoder(
             encoder_channels = self.encoder.out_shapes,
             decoder_channels = decoder_channels,
             final_channels = classes,
             use_batchnorm = decoder_use_batchnorm,
             center = center,
+            use_attention = use_attention,
+            concat_output = concat_output,
         )
 
         if callable(activation) or activation is None:
@@ -666,3 +695,40 @@ class Unet(nn.Module):
             if self.activation:
                 x = self.activation(x)
         return x
+
+
+
+if __name__ == '__main__':
+    # argsparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--load_split',   action = 'store_false', default = True,    help = 'Rerun train/test split')
+    parser.add_argument('--accumulate',   action = 'store_false', default = True,    help = 'Not doing gradient accumulation or not')
+    parser.add_argument('--bayes_opt',    action = 'store_true',  default = False,   help = 'Do Bayesian optimization in finding hyper-parameters')
+    parser.add_argument('-l','--load_mod',action = 'store_true',  default = False,   help = 'Load a pre-trained model')
+    parser.add_argument('-t','--test_run',action = 'store_true',  default = False,   help = 'Run the script quickly to check all functions')
+    
+    parser.add_argument('--decoder',     type = str,  default = 'cbam_con', help = 'Structure in the Unet decoder')
+    parser.add_argument('--normalize',   type = int,  default = 0,          help = 'Normalize the images or not')
+    parser.add_argument('--wlovasz',     type = float,default = 0.2,        help = 'The weight used in Lovasz loss')
+    parser.add_argument('--augment',     type = int,  default = 0,          help = 'The type of train augmentations: 0 vanilla, 1 add contrast, 2 add  ')
+    parser.add_argument('--loss',        type = int,  default = 0,          help = 'The loss: 0 BCE vanilla; 1 wbce+dice; 2 wbce+lovasz.')
+    parser.add_argument('--sch',         type = int,  default = 0,          help = 'The schedule of the learning rate: 0 step; 1 cosine annealing; 2 cosine annealing with warmup.')    
+    parser.add_argument('-m', '--model', type = str,  default = 'resnet34', help = 'The backbone network of the neural network.')
+    parser.add_argument('-e', '--epoch', type = int,  default = 5,          help = 'The number of epochs in the training')
+    parser.add_argument('--height',      type = int,  default = 256,        help = 'The height of the image')
+    parser.add_argument('--width',       type = int,  default = 1600,       help = 'The width of the image')
+    parser.add_argument('--category',    type = int,  default = 4,          help = 'The category of the problem')
+    parser.add_argument('-b', '--batch', type = int,  default = 8,          help = 'The batch size of the training')
+    parser.add_argument('-s','--swa',    type = int,  default = 4,          help = 'The number of epochs for stochastic weight averaging')
+    parser.add_argument('-o','--output', type = int,  default = 0,          help = 'The type of the network, 0 vanilla, 1 add regression, 2 add classification.')
+    parser.add_argument('--seed',        type = int,  default = 1234,       help = 'The random seed of the algorithm.')
+    parser.add_argument('--eva_method',  type = int,  default = 1,          help = 'The evaluation method in postprocessing: 0 thres/size; 1 thres/size/classify; 2 thres/size/classify/after')
+    args = parser.parse_args()
+
+    # test
+    net = Unet('resnet34', encoder_weights = None, classes = 4, activation = None, args = args)
+    image = torch.zeros(1, 3, 256, 1600)
+    #test = F.interpolate(image, scale_factor=2, mode='nearest')
+    #print(test.shape)
+    output = net(image)
+    print(output.shape)
