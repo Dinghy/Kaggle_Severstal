@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 import pandas as pd
-from torch.utils.data import DataLoader, Dataset, sampler
+from torch.utils.data import DataLoader, Dataset, Sampler
 
 from albumentations import (Compose, Flip, HorizontalFlip, Normalize, 
 	RandomBrightnessContrast, RandomBrightness, RandomContrast, RandomGamma, OneOf, ToFloat, 

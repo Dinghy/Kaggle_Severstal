@@ -23,7 +23,7 @@ from torch import nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from dataset import SteelDataset, InfiniteSampler
-from unet_new import Unet
+from unet import Unet
 from metric import dice_metric
 from utils import mask2rle, rle2mask, plot_mask, analyze_labels, seed_everything, print2file
 from loss import criterion_wbce_dice, criterion_wbce_lovasz, criterion_wmse, criterion_wbce
@@ -167,9 +167,8 @@ if __name__ == '__main__':
 	parser.add_argument('-l','--load_mod',action = 'store_true',  default = False,   help = 'Load a pre-trained model')
 	parser.add_argument('-t','--test_run',action = 'store_true',  default = False,   help = 'Run the script quickly to check all functions')
 	parser.add_argument('--VAT',          action = 'store_true',  default = False,   help = 'Add VAT loss in the loss functions')
+	parser.add_argument('--bo_fineTune',  action = 'store_true',  default = False,   help = 'Fine-Tuning BO result')
 
-	parser.add_argument('--decoder',     type = str,  default = 'cbam_con', help = 'Structure in the Unet decoder')
-	parser.add_argument('--normalize',   type = int,  default = 0,          help = 'Normalize the images or not')
 	parser.add_argument('--decoder',     type = str,  default = 'cbam_con', help = 'Structure in the Unet decoder')
 	parser.add_argument('--normalize',   type = int,  default = 1,          help = 'Normalize the images or not')
 	parser.add_argument('--wlovasz',     type = float,default = 0.2,        help = 'The weight used in Lovasz loss')
@@ -227,9 +226,10 @@ if __name__ == '__main__':
 	# if test run a small version
 	if args.test_run:
 		rows = 100
+		TEST_FILES = TEST_FILES[:100]
 	else:
 		rows = len(TRAIN_FILES_ALL)
-
+		
 	# Re run train test split
 	if not args.load_split:
 		# get train and test for statistics
@@ -274,8 +274,12 @@ if __name__ == '__main__':
 	else: # load previous result
 		train_mean, train_std = 0.3438812517320016, 0.056746666005067205
 		test_mean, test_std = 0.25951299299868136, 0.051800296725619116
+		# TO DO: change this part
 		# load validation id 
-		valid_data_df = pd.read_csv('../input/validID.csv')
+		if args.bo_fineTune:
+			valid_data_df = pd.read_csv('validID.csv')
+		else:
+			valid_data_df = pd.read_csv('../input/validID.csv')
 		print(valid_data_df.head())
 		X_valid = list(valid_data_df['Valid'])[:rows]
 		X_train = list(set(np.arange(len(TRAIN_FILES_ALL))) - set(X_valid))[:rows]
@@ -366,12 +370,12 @@ if __name__ == '__main__':
 	# creat the data set
 	steel_ds_train = SteelDataset(TRAIN_FILES, args, mask_df = mask_df, augment = augment_train)
 	steel_ds_valid = SteelDataset(VALID_FILES, args, mask_df = mask_df, augment = augment_valid)	
-	steel_ds_vat = SteelDataset(TEST_FILES, args, augment = augment_test)    
+	steel_ds_test = SteelDataset(TEST_FILES, args, augment = augment_test)    
 		
 	# create the dataloader
 	trainloader = torch.utils.data.DataLoader(steel_ds_train, batch_size = args.batch, shuffle = True, num_workers = 4)
 	validloader = torch.utils.data.DataLoader(steel_ds_valid, batch_size = args.batch, shuffle = False, num_workers = 4)
-	vatloader = torch.utils.data.DataLoader(steel_ds_vat, batch_size = args.batch, sampler = InfiniteSampler(len(steel_ds_vat)), num_workers = 4)
+	vatloader = torch.utils.data.DataLoader(steel_ds_test, batch_size = args.batch, sampler = InfiniteSampler(len(steel_ds_test)), num_workers = 4)
 	# cpu or gpu
 	device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -411,7 +415,7 @@ if __name__ == '__main__':
 	
 
 	########################################################################
-	# Define a Loss function and optimizer
+	# Loss function
 	if args.loss == 0:
 		criterion = [nn.BCEWithLogitsLoss(), None]
 	elif args.loss == 1:
@@ -468,7 +472,8 @@ if __name__ == '__main__':
 	########################################################################
 	# Evaluate the network
 	# get all predictions of the validation set: maybe a memory error here.
-	if args.load_mod:
+	if args.load_mod and not args.bo_fineTune:
+		
 		# load swa model
 		eva = Evaluate(nets, device, validloader, args, isTest = False)
 		eva.search_parameter()
@@ -486,5 +491,37 @@ if __name__ == '__main__':
 		print2file(sout, LOG_FILE)
 		print2file(','.join('"'+str(key)+'":'+str(val) for key,val in eva.dicPara.items()), LOG_FILE)
 		
+	
+	# fine tune the result in ensemble
+	if args.bo_fineTune and args.model == 'ensemble':
+		dicPara = {'thres_seg1': 0.4533134987534817, 'size_seg1': 613.1016620220344, 'thres_oth1': 0.6794573692116359, 'size_oth1': 2067.734842164869,\
+			   'thres_seg2': 0.4660851963381183, 'size_seg2': 1337.604976031266, 'thres_oth2': 0.1724603105855378, 'size_oth2': 3637.458108598964,\
+			   'thres_seg3': 0.5082858551894693, 'size_seg3': 655.6238707406021, 'thres_oth3': 0.4241747771586643, 'size_oth3': 2178.811772705825,\
+			   'thres_seg4': 0.4199609444062345, 'size_seg4': 1235.609034701938, 'thres_oth4': 0.5516533322432883, 'size_oth4': 2704.011274575476}
+		
+		eva = Evaluate(nets, device, validloader, args, isTest = False)
+		eva.search_parameter_fine(dicPara)
+		dice, dicPred, dicSubmit, _ = eva.predict_dataloader(gen_pseudo = False)
 
-
+                # evaluate the prediction
+		sout = '\n\nFinal SWA Dice {:.3f}\n'.format(dice) +\
+			'==============SWA Predict===============\n' + \
+			analyze_labels(pd.DataFrame(dicPred)) + \
+			'==============True===============\n' + \
+			analyze_labels(stat_df_valid)
+		
+		print(sout)
+		print2file(sout, LOG_FILE)
+		print2file(','.join('"'+str(key)+'":'+str(val) for key,val in eva.dicPara.items()), LOG_FILE)
+		
+		# generate the pseudo labeling data
+		testloader = torch.utils.data.DataLoader(steel_ds_test, batch_size = args.batch, shuffle = False, num_workers = 4)
+			
+		eva_test = Evaluate(nets, device, testloader, args, dicPara = eva.dicPara, isTest = True)
+		dice, dicPred, dicSubmit, dicPseudo = eva_test.predict_dataloader(gen_pseudo = True, to_rle = True, fnames = TEST_FILES)
+		print(analyze_labels(pd.DataFrame(dicPred)))
+		
+		# output the pseudo label
+		pseudo_df = pd.DataFrame(dicPseudo)
+		print(pseudo_df.head())
+		pseudo_df.to_csv('../output/Pseudo_{:s}.csv'.format(strSpec), index=False)

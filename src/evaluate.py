@@ -76,6 +76,10 @@ def post_process(pred, other, dicPara):
                         'thres_oth{:d}'.format(category+1), 'size_oth{:d}'.format(category+1))]
         else:
             paras = [dicPara[item] for item in ('thres_seg{:d}'.format(category+1), 'size_seg{:d}'.format(category+1))]
+        # after processing
+        if 'thres_after{:d}'.format(category+1) in dicPara:
+            paras.append(dicPara['thres_after{:d}'.format(category+1)])
+
         pred[:,:,category] = post_process_single(pred[:,:,category], other[category], *paras)
 
     return pred
@@ -104,9 +108,12 @@ class Evaluate:
         return
 
 
-    def search_parameter_fine(self):
+    def search_parameter_fine(self, dicPara = None):
         'Use the Bayesian Optimization again to fine tune the parameters'
         self.eval_net()
+        if dicPara is not None:
+            self.dicPara = dicPara
+
         if self.dicPara is None:
             self.search_parameter()
 
@@ -375,9 +382,9 @@ class Evaluate:
 
                             # Pseudo labeling
                             if gen_pseudo:
-                                dicSubmit['ImageId_ClassId'].append(fname_short)
-                                dicSubmit['EncodedPixels'].append(rle)
-                                dicSubmit['Trust'].append(output_label[category])
+                                dicPseudo['ImageId_ClassId'].append(fname_short)
+                                dicPseudo['EncodedPixels'].append(rle)
+                                dicPseudo['Trust'].append(output_label[category])
 
                         # record the statistics
                         dicPred['Class {:d}'.format(category+1)].append(area_ratio(output_thres[:,:,category]))
