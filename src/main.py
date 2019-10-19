@@ -292,8 +292,10 @@ if __name__ == '__main__':
 	else: # load previous result
 		train_mean, train_std = 0.3438812517320016, 0.056746666005067205
 		test_mean, test_std = 0.25951299299868136, 0.051800296725619116
-		# load validation id
-		X_valid = list(pd.read_csv('../input/validID.csv')['Valid'])[:rows]
+		# load validation id 
+		valid_data_df = pd.read_csv('../input/validID.csv')
+		print(valid_data_df.head())
+		X_valid = list(valid_data_df['Valid'])[:rows]
 		X_train = list(set(np.arange(len(TRAIN_FILES_ALL))) - set(X_valid))[:rows]
 
 		# get the train and valid files
