@@ -151,6 +151,13 @@ def train_net(net, criterion, optimizer, device, args, LOG_FILE, MODEL_FILE):
 		return net.state_dict(), history
 
 
+def concatenate_model_file(args, model_type):
+	# concate a folder path with the model type
+	dicSpec = {'dec_':args.decoder, 'm_':model_type, 'e_':args.epoch, 'norm_':args.normalize, 'sch_':args.sch, 'loss_':args.loss, 'out_':args.output, 'seed_':args.seed}
+	strSpec = '_'.join(key+str(val) for key,val in dicSpec.items())
+	return '../input/weights/model_swa_{:s}.pth'.format(strSpec)
+
+
 if __name__ == '__main__':
 	# argsparse
 	parser = argparse.ArgumentParser()
@@ -163,10 +170,12 @@ if __name__ == '__main__':
 
 	parser.add_argument('--decoder',     type = str,  default = 'cbam_con', help = 'Structure in the Unet decoder')
 	parser.add_argument('--normalize',   type = int,  default = 0,          help = 'Normalize the images or not')
+	parser.add_argument('--decoder',     type = str,  default = 'cbam_con', help = 'Structure in the Unet decoder')
+	parser.add_argument('--normalize',   type = int,  default = 1,          help = 'Normalize the images or not')
 	parser.add_argument('--wlovasz',     type = float,default = 0.2,        help = 'The weight used in Lovasz loss')
 	parser.add_argument('--augment',     type = int,  default = 0,          help = 'The type of train augmentations: 0 vanilla, 1 add contrast, 2 add  ')
-	parser.add_argument('--loss',        type = int,  default = 0,          help = 'The loss: 0 BCE vanilla; 1 wbce+dice; 2 wbce+lovasz.')
-	parser.add_argument('--sch',         type = int,  default = 0,          help = 'The schedule of the learning rate: 0 step; 1 cosine annealing; 2 cosine annealing with warmup.')	
+	parser.add_argument('--loss',        type = int,  default = 2,          help = 'The loss: 0 BCE vanilla; 1 wbce+dice; 2 wbce+lovasz.')
+	parser.add_argument('--sch',         type = int,  default = 2,          help = 'The schedule of the learning rate: 0 step; 1 cosine annealing; 2 cosine annealing with warmup.')	
 	parser.add_argument('-m', '--model', type = str,  default = 'resnet34', help = 'The backbone network of the neural network.')
 	parser.add_argument('-e', '--epoch', type = int,  default = 5,          help = 'The number of epochs in the training')
 	parser.add_argument('--height',      type = int,  default = 256,        help = 'The height of the image')
@@ -174,7 +183,7 @@ if __name__ == '__main__':
 	parser.add_argument('--category',    type = int,  default = 4,          help = 'The category of the problem')
 	parser.add_argument('-b', '--batch', type = int,  default = 8,          help = 'The batch size of the training')
 	parser.add_argument('-s','--swa',    type = int,  default = 4,          help = 'The number of epochs for stochastic weight averaging')
-	parser.add_argument('-o','--output', type = int,  default = 0,          help = 'The type of the network, 0 vanilla, 1 add regression, 2 add classification.')
+	parser.add_argument('-o','--output', type = int,  default = 2,          help = 'The type of the network, 0 vanilla, 1 add regression, 2 add classification.')
 	parser.add_argument('--seed',        type = int,  default = 1234,       help = 'The random seed of the algorithm.')
 	parser.add_argument('--eva_method',  type = int,  default = 1,          help = 'The evaluation method in postprocessing: 0 thres/size; 1 thres/size/classify; 2 thres/size/classify/after')
 	parser.add_argument('--vat_xi',      type = float,default = 0.01,       help = 'How much we modify each pixel in VAT')
@@ -193,7 +202,7 @@ if __name__ == '__main__':
 	TRAIN_MASKS = '../input/severstal-steel-defect-detection/train.csv'
 	
 	# ouput folder paths
-	dicSpec = {'m_':args.model, 'e_':args.epoch, 'norm_':args.normalize, 'sch_':args.sch, 'loss_':args.loss, 'out_':args.output, 'seed_':args.seed}
+	dicSpec = {'dec_':args.decoder, 'm_':args.model, 'e_':args.epoch, 'norm_':args.normalize, 'sch_':args.sch, 'loss_':args.loss, 'out_':args.output, 'seed_':args.seed}
 	strSpec = '_'.join(key+str(val) for key,val in dicSpec.items())
 	
 	VALID_ID_FILE = '../output/validID_{:s}.csv'.format(strSpec)
@@ -265,8 +274,10 @@ if __name__ == '__main__':
 	else: # load previous result
 		train_mean, train_std = 0.3438812517320016, 0.056746666005067205
 		test_mean, test_std = 0.25951299299868136, 0.051800296725619116
-		# load validation id
-		X_valid = list(pd.read_csv('validID.csv')['Valid'])[:rows]
+		# load validation id 
+		valid_data_df = pd.read_csv('../input/validID.csv')
+		print(valid_data_df.head())
+		X_valid = list(valid_data_df['Valid'])[:rows]
 		X_train = list(set(np.arange(len(TRAIN_FILES_ALL))) - set(X_valid))[:rows]
 
 		# get the train and valid files
@@ -376,6 +387,25 @@ if __name__ == '__main__':
 	# Model
 	if args.model == 'resnet34' or args.model == 'se_resnet50':
 		net = Unet(args.model, encoder_weights="imagenet", classes = 4, activation = None, args = args).to(device)  # pass model specification to the resnet32
+		if args.load_mod:
+			# load the Unet model
+			net.load_state_dict(torch.load(MODEL_SWA_FILE))
+			# generate the same form of the input net
+			nets = [net]
+		
+	elif args.model == 'ensemble':
+		if args.load_mod:
+			nets = []
+			model_types = ['resnet34', 'se_resnet50']
+			for model_type in model_types:
+				# concatenate the file name
+				model_file = concatenate_model_file(args, model_type)
+				print(model_type, model_file)
+				net = Unet(model_type, encoder_weights = None, classes = 4, activation = None, args = args).to(device)  # pass model specification to the resnet32
+				net.load_state_dict(torch.load(model_file))
+				nets.append(net)
+		else:
+			raise ValueError('Can not train the model in loading models for ensemble.')
 	else:
 		raise NotImplementedError
 	
@@ -408,18 +438,15 @@ if __name__ == '__main__':
 
 	########################################################################
 	# optimizer
-	# if args.optim == 'adam':
 	optimizer = optim.Adam(net.parameters(), lr = 0.001)
 	
 	########################################################################
 	# Train the network
 	seed_everything(seed = args.seed)
-	if args.load_mod:
-		history = {'Train_loss':[], 'Train_dice':[], 'Valid_loss':[], 'Valid_dice':[]}
-		net.load_state_dict(torch.load(MODEL_FILE))
-	else:
+	if not args.load_mod:
 		net_swa, history = train_net(net, criterion, optimizer, device, args, LOG_FILE, MODEL_FILE)
 		torch.save(net_swa, MODEL_SWA_FILE)
+		
 		# save the final result
 		print('Finished Training')
 		history_df = pd.DataFrame(history)
@@ -442,10 +469,8 @@ if __name__ == '__main__':
 	# Evaluate the network
 	# get all predictions of the validation set: maybe a memory error here.
 	if args.load_mod:
-		# evaluate the validation set
 		# load swa model
-		net.load_state_dict(torch.load(MODEL_SWA_FILE))
-		eva = Evaluate(net, device, validloader, args, isTest = False)
+		eva = Evaluate(nets, device, validloader, args, isTest = False)
 		eva.search_parameter()
 		dice, dicPred, dicSubmit, _ = eva.predict_dataloader(gen_pseudo = False)
 		eva.plot_sampled_predict()

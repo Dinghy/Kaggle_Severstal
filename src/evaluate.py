@@ -104,8 +104,76 @@ class Evaluate:
         return
 
 
+    def search_parameter_fine(self):
+        'Use the Bayesian Optimization again to fine tune the parameters'
+        self.eval_net()
+        if self.dicPara is None:
+            self.search_parameter()
+
+        def cal_dice(thres_seg, size_seg, thres_oth=-float('inf'), size_oth=0, thres_after = -float('inf')):
+            ipos = 0
+            dice = 0.0
+            for pred, other, true_rle in zip(preds, others, trues):
+                # post process
+                true = rle2mask(true_rle, self.args.width, self.args.height)
+                pred = post_process_single(pred, other, thres_seg, size_seg, thres_oth, size_oth, thres_after)
+                ipos += 1
+                dice += dice_metric(true, pred)
+            return dice/len(preds)
+
+        preds, trues, others = [], [], []
+        for category in range(4):
+            ipos = 0
+            # get the prediction and save it
+            with torch.no_grad():
+                for data in tqdm(self.dataloader):
+                    images, labels = data[0], data[1]
+                    for image_raw, label_raw in zip(images, labels):
+                        # flip and predict
+                        output_merge, output_other = self.predict_flip(image_raw, category)
+                        true_mask = label_raw[:,:,category].detach().numpy().astype(int)
+                        if category == 0:
+                            trues.append(mask2rle(true_mask))
+                            preds.append(output_merge)
+                            others.append(output_other)
+                        else:
+                            trues[ipos] = mask2rle(true_mask)
+                            preds[ipos] = output_merge
+                            others[ipos] = output_other
+                        ipos += 1
+            
+            # using bayes optimize to determine the threshold
+            thres_seg, size_seg, thres_oth, size_oth = self.dicPara['thres_seg{:d}'.format(category+1)],\
+                                                       self.dicPara['size_seg{:d}'.format(category+1)],\
+                                                       self.dicPara['thres_oth{:d}'.format(category+1)],\
+                                                       self.dicPara['size_oth{:d}'.format(category+1)]
+
+            pbounds = {'thres_seg'  : (thres_seg*0.9 , thres_seg*1.1), \
+                       'size_seg'   : (size_seg*0.9  , size_seg*1.1 ), \
+                       'thres_oth'  : (thres_oth*0.9 , thres_oth*1.1), \
+                       'size_oth'   : (size_oth*0.9  , size_oth*1.1 ), \
+                       'thres_after': (0.1, thres_seg)}
+                       
+            optimizer = BayesianOptimization(f = cal_dice, pbounds = pbounds, random_state = 1)   
+            
+            # adjust the bayes opt stage
+            # test
+            if self.args.test_run or self.args.epoch < 5:
+                optimizer.maximize(init_points = 10, n_iter = 1)
+            else:
+                optimizer.maximize(init_points = 200, n_iter = 150)
+            
+            # store the parameters
+            for spara in ('thres_seg', 'size_seg', 'thres_oth', 'size_oth', 'thres_after'):
+                self.dicPara['{:s}{:d}'.format(spara, category+1)] = optimizer.max['params'][spara]
+
+        
+        print(self.dicPara)
+        return
+
+
     def search_parameter(self):
-        'Bayes opt to determine the threshold for each label'
+        'Use the Bayesian optimization to determine the threshold for each label'
         self.eval_net()
         # store the parameters
         self.dicPara = {}
