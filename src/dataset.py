@@ -10,6 +10,20 @@ from albumentations import (Compose, Flip, HorizontalFlip, Normalize,
 from tqdm import tqdm
 from utils import rle2mask
 
+class InfiniteSampler(Sampler):
+
+    def __init__(self, num_samples):
+        self.num_samples = num_samples
+
+    def __iter__(self):
+        while True:
+            order = np.random.permutation(self.num_samples)
+            for i in range(self.num_samples):
+                yield order[i]
+
+    def __len__(self):
+        return None
+
 
 def random_crop_shift_pad(image, mask, p = 0.4):
 	# randomly crop a part from the image in width direction

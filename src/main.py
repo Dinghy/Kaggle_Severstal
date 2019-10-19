@@ -22,51 +22,13 @@ import torchvision.models as models
 from torch import nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-from dataset import SteelDataset
-from unet import Unet
+from dataset import SteelDataset, InfiniteSampler
+from unet_new import Unet
 from metric import dice_metric
 from utils import mask2rle, rle2mask, plot_mask, analyze_labels, seed_everything, print2file
 from loss import criterion_wbce_dice, criterion_wbce_lovasz, criterion_wmse, criterion_wbce
-from evaluate import Evaluate
-
-def evaluate_batch(data, outputs, args, threshold = 0.5):
-	if args.output == 0:
-		masks   = data[1].detach().cpu().numpy()
-		pred_masks  = (torch.sigmoid(outputs).detach().cpu().numpy() > threshold).astype(int)
-		# print(masks.shape, pred_masks.shape)
-		return dice_metric(masks, pred_masks), 0.0
-	elif args.output == 1:
-		masks   = data[1].detach().cpu().numpy()
-		labels  = data[2].detach().cpu().numpy()
-		pred_masks  = (torch.sigmoid(outputs[0]).detach().cpu().numpy() > threshold).astype(int)
-		pred_labels = outputs[1].detach().cpu().numpy()
-		return dice_metric(masks, pred_masks), np.sum(np.sqrt((pred_labels-labels)**2))
-	elif args.output == 2:  # classification
-		masks   = data[1].detach().cpu().numpy()
-		labels  = data[2].detach().cpu().numpy()
-		pred_masks  = (torch.sigmoid(outputs[0]).detach().cpu().numpy() > threshold).astype(int)
-		pred_labels = (torch.sigmoid(outputs[1]).detach().cpu().numpy() > threshold).astype(int)
-		return dice_metric(masks, pred_masks), np.sum((pred_labels == labels).astype(int)) 
-
-
-def evaluate_loader(net, device, criterion, dataloader, args):
-	loss, dice, other = 0.0, 0.0, 0.0
-	with torch.no_grad():
-		for data in dataloader:
-			images, masks = data[0].to(device), data[1].to(device)
-			images = images.permute(0, 3, 1, 2)
-			masks = masks.permute(0, 3, 1, 2)
-			outputs = net(images)
-
-			if criterion[1] is not None:
-				loss += 0.2*criterion[1](outputs[1], data[2].to(device)).item()
-				loss += criterion[0](outputs[0], masks, weight = args.wlovasz).item()
-			else:
-				loss += criterion[0](outputs, masks, weight = args.wlovasz).item()
-						   
-			res = evaluate_batch(data, outputs, args)
-			dice, other = dice+res[0], other + res[1]
-	return loss, dice, other
+from loss_vat import VATLoss
+from evaluate import Evaluate, evaluate_batch, evaluate_loader
 
 
 def train_net(net, criterion, optimizer, device, args, LOG_FILE, MODEL_FILE):
@@ -82,6 +44,11 @@ def train_net(net, criterion, optimizer, device, args, LOG_FILE, MODEL_FILE):
 	# criterion
 	criterion_seg, criterion_other = criterion[0], criterion[1]
 	
+	# VAT semi-supervised training
+	if args.VAT:
+		vat = VATLoss(xi = args.vat_xi)
+		vat_iter = iter(vatloader)
+
 	val_dice_best = -float('inf')
 	# main iteration
 	for epoch in range(args.epoch):  # loop over the dataset multiple times
@@ -100,6 +67,13 @@ def train_net(net, criterion, optimizer, device, args, LOG_FILE, MODEL_FILE):
 			images = images.permute(0, 3, 1, 2)
 			masks  = masks.permute(0, 3, 1, 2)
 
+			# vat loss, drawn from unlabeled data
+			if args.VAT:
+				images_vat = next(vat_iter)[0].to(device).permute(0, 3, 1, 2)
+				loss_vat = vat(net, images_vat)
+			else:
+				loss_vat = 0
+
 			# forward + backward + optimize
 			outputs = net(images)
 			# do not accumulate the gradient
@@ -109,6 +83,8 @@ def train_net(net, criterion, optimizer, device, args, LOG_FILE, MODEL_FILE):
 					loss = criterion_seg(outputs, masks)
 				elif args.output == 1 or args.output == 2:
 					loss = criterion_seg(outputs[0], masks, weight = args.wlovasz) + 0.2 * criterion_other(outputs[1], labels)
+				# add vat loss
+				loss += loss_vat
 				loss.backward()
 				optimizer.step()
 				optimizer.zero_grad()
@@ -121,6 +97,8 @@ def train_net(net, criterion, optimizer, device, args, LOG_FILE, MODEL_FILE):
 					loss = criterion_seg(outputs, masks)/acc_step
 				elif args.output == 1 or args.output == 2:
 					loss = (criterion_seg(outputs[0], masks, weight = args.wlovasz) + 0.2 * criterion_other(outputs[1], labels))/acc_step 
+				# add vat loss
+				loss += loss_vat
 				loss.backward()
 				if (i+1)%acc_step == 0:
 					optimizer.step()
@@ -181,7 +159,9 @@ if __name__ == '__main__':
 	parser.add_argument('--bayes_opt',    action = 'store_true',  default = False,   help = 'Do Bayesian optimization in finding hyper-parameters')
 	parser.add_argument('-l','--load_mod',action = 'store_true',  default = False,   help = 'Load a pre-trained model')
 	parser.add_argument('-t','--test_run',action = 'store_true',  default = False,   help = 'Run the script quickly to check all functions')
-	
+	parser.add_argument('--VAT',          action = 'store_true',  default = False,   help = 'Add VAT loss in the loss functions')
+
+	parser.add_argument('--decoder',     type = str,  default = 'cbam_con', help = 'Structure in the Unet decoder')
 	parser.add_argument('--normalize',   type = int,  default = 0,          help = 'Normalize the images or not')
 	parser.add_argument('--wlovasz',     type = float,default = 0.2,        help = 'The weight used in Lovasz loss')
 	parser.add_argument('--augment',     type = int,  default = 0,          help = 'The type of train augmentations: 0 vanilla, 1 add contrast, 2 add  ')
@@ -197,6 +177,7 @@ if __name__ == '__main__':
 	parser.add_argument('-o','--output', type = int,  default = 0,          help = 'The type of the network, 0 vanilla, 1 add regression, 2 add classification.')
 	parser.add_argument('--seed',        type = int,  default = 1234,       help = 'The random seed of the algorithm.')
 	parser.add_argument('--eva_method',  type = int,  default = 1,          help = 'The evaluation method in postprocessing: 0 thres/size; 1 thres/size/classify; 2 thres/size/classify/after')
+	parser.add_argument('--vat_xi',      type = float,default = 0.01,       help = 'How much we modify each pixel in VAT')
 	args = parser.parse_args()
 
 	######################################################
@@ -312,29 +293,13 @@ if __name__ == '__main__':
 
 	########################################################################
 	# Augmentations
-	if args.augment == 0:
-		augment_train = Compose([
-			Flip(p=0.5),           # Flip vertically or horizontally or both
-			ShiftScaleRotate(rotate_limit = 10, p = 0.3), 
-			Normalize(mean = norm_mean, std  = norm_std),
-			ToFloat(max_value=1.)  # Divide pixel values by max_value to get a float32 output
-		 ],p=1)
-	elif args.augment == 2:
-		augment_train = Compose([
-			Flip(p=0.5),          # Flip vertically or horizontally or both
-			RandomBrightnessContrast(p = 0.3),
-			ShiftScaleRotate(rotate_limit = 10, p = 0.3),
-			Normalize(mean = norm_mean, std  = norm_std),
-			ToFloat(max_value=1.) # Divide pixel values by max_value to get a float32 output
-		],p=1)
-	elif args.augment == 1:
-		augment_train = Compose([
-			Flip(p=0.5),   # Flip vertically or horizontally or both
-			ShiftScaleRotate(rotate_limit = 10, p = 0.3),
-			RandomBrightnessContrast(p = 0.3),
-			Normalize(mean = norm_mean, std  = norm_std),
-			ToFloat(max_value=1.)
-		],p=1)
+	augment_train = Compose([
+		Flip(p=0.5),          # Flip vertically or horizontally or both
+		RandomBrightnessContrast(p = 0.3),
+		ShiftScaleRotate(rotate_limit = 10, p = 0.3),
+		Normalize(mean = norm_mean, std  = norm_std),
+		ToFloat(max_value=1.) # Divide pixel values by max_value to get a float32 output
+	],p=1)
 
 	# validation
 	augment_valid = Compose([
@@ -390,11 +355,12 @@ if __name__ == '__main__':
 	# creat the data set
 	steel_ds_train = SteelDataset(TRAIN_FILES, args, mask_df = mask_df, augment = augment_train)
 	steel_ds_valid = SteelDataset(VALID_FILES, args, mask_df = mask_df, augment = augment_valid)	
+	steel_ds_vat = SteelDataset(TEST_FILES, args, augment = augment_test)    
 		
 	# create the dataloader
 	trainloader = torch.utils.data.DataLoader(steel_ds_train, batch_size = args.batch, shuffle = True, num_workers = 4)
 	validloader = torch.utils.data.DataLoader(steel_ds_valid, batch_size = args.batch, shuffle = False, num_workers = 4)
-
+	vatloader = torch.utils.data.DataLoader(steel_ds_vat, batch_size = args.batch, sampler = InfiniteSampler(len(steel_ds_vat)), num_workers = 4)
 	# cpu or gpu
 	device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -476,12 +442,12 @@ if __name__ == '__main__':
 	# Evaluate the network
 	# get all predictions of the validation set: maybe a memory error here.
 	if args.load_mod:
-	
+		# evaluate the validation set
 		# load swa model
 		net.load_state_dict(torch.load(MODEL_SWA_FILE))
 		eva = Evaluate(net, device, validloader, args, isTest = False)
 		eva.search_parameter()
-		dice, dicPred, dicSubmit = eva.predict_dataloader()
+		dice, dicPred, dicSubmit, _ = eva.predict_dataloader(gen_pseudo = False)
 		eva.plot_sampled_predict()
 	
 		# evaluate the prediction
@@ -494,3 +460,6 @@ if __name__ == '__main__':
 		print(sout)
 		print2file(sout, LOG_FILE)
 		print2file(','.join('"'+str(key)+'":'+str(val) for key,val in eva.dicPara.items()), LOG_FILE)
+		
+
+

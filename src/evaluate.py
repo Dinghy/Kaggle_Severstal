@@ -7,6 +7,49 @@ import matplotlib.pyplot as plt
 from metric import dice_metric
 from utils import mask2rle, rle2mask, plot_mask
 
+
+def evaluate_batch(data, outputs, args, threshold = 0.5):
+    # evaluate a mini-batch without too complicated thresholding
+    if args.output == 0:
+        masks   = data[1].detach().cpu().numpy()
+        pred_masks  = (torch.sigmoid(outputs).detach().cpu().numpy() > threshold).astype(int)
+        # print(masks.shape, pred_masks.shape)
+        return dice_metric(masks, pred_masks), 0.0
+    elif args.output == 1:
+        masks   = data[1].detach().cpu().numpy()
+        labels  = data[2].detach().cpu().numpy()
+        pred_masks  = (torch.sigmoid(outputs[0]).detach().cpu().numpy() > threshold).astype(int)
+        pred_labels = outputs[1].detach().cpu().numpy()
+        return dice_metric(masks, pred_masks), np.sum(np.sqrt((pred_labels-labels)**2))
+    elif args.output == 2:  # classification
+        masks   = data[1].detach().cpu().numpy()
+        labels  = data[2].detach().cpu().numpy()
+        pred_masks  = (torch.sigmoid(outputs[0]).detach().cpu().numpy() > threshold).astype(int)
+        pred_labels = (torch.sigmoid(outputs[1]).detach().cpu().numpy() > threshold).astype(int)
+        return dice_metric(masks, pred_masks), np.sum((pred_labels == labels).astype(int)) 
+
+
+def evaluate_loader(net, device, criterion, dataloader, args):
+    # evaluate the dataloader without too complicated thresholding
+    loss, dice, other = 0.0, 0.0, 0.0
+    with torch.no_grad():
+        for data in dataloader:
+            images, masks = data[0].to(device), data[1].to(device)
+            images = images.permute(0, 3, 1, 2)
+            masks = masks.permute(0, 3, 1, 2)
+            outputs = net(images)
+
+            if criterion[1] is not None:
+                loss += 0.2*criterion[1](outputs[1], data[2].to(device)).item()
+                loss += criterion[0](outputs[0], masks, weight = args.wlovasz).item()
+            else:
+                loss += criterion[0](outputs, masks, weight = args.wlovasz).item()
+                           
+            res = evaluate_batch(data, outputs, args)
+            dice, other = dice+res[0], other + res[1]
+    return loss, dice, other
+
+
 def post_process_single(pred, other, thres_seg = 0.5, size_seg = 100, thres_oth = -float('inf'), size_oth = 0, thres_after = -float('inf')):
     if thres_after != -float('inf'):
         pred_agg = (pred > thres_seg).astype(int)
@@ -39,7 +82,7 @@ def post_process(pred, other, dicPara):
 
 
 class Evaluate:
-
+    # evaluate the models or a list of models in a systematical way
     def __init__(self, net, device, dataloader, args, dicPara = None, isTest = True):
         self.args = args
         if not isinstance(net, list):
@@ -215,7 +258,7 @@ class Evaluate:
         return self.output_mask/4/len(self.net), self.output_label/4/len(self.net)
 
     
-    def predict_dataloader(self, to_rle = False, fnames = None):
+    def predict_dataloader(self, to_rle = False, fnames = None, gen_pseudo = True):
         if self.dicPara is None:
             self.search_parameter()
 
@@ -228,7 +271,13 @@ class Evaluate:
             dicPred['Class '+str(classid+1)] = []
             dicPred['Dice '+str(classid+1)] = []
             dicPred['True '+str(classid+1)] = []
+        
+        # initialize the dict for submission
         dicSubmit = {'ImageId_ClassId':[], 'EncodedPixels':[]}
+        # initialize the dict for pseudo labeling
+        dicPseudo = {'ImageId_ClassId':[], 'EncodedPixels':[], 'Trust':[]}
+
+        # store the dice overall
         dice, preds = 0.0, []
         ipos = 0
         def area_ratio(mask):
@@ -251,11 +300,20 @@ class Evaluate:
                         if to_rle:
                             fname = fnames[ipos]
                             fname_short = fname.split('/')[-1]+'_{:d}'.format(category+1)
-                            dicSubmit['ImageId_ClassId'].append(fname_short)
                             rle = mask2rle(output_thres[:,:,category])
+                            # submission
+                            dicSubmit['ImageId_ClassId'].append(fname_short)
                             dicSubmit['EncodedPixels'].append(rle)
+
+                            # Pseudo labeling
+                            if gen_pseudo:
+                                dicSubmit['ImageId_ClassId'].append(fname_short)
+                                dicSubmit['EncodedPixels'].append(rle)
+                                dicSubmit['Trust'].append(output_label[category])
+
+                        # record the statistics
                         dicPred['Class {:d}'.format(category+1)].append(area_ratio(output_thres[:,:,category]))
-                        
+                        # add to the dice 
                         if not self.isTest:
                             dice_cat = dice_metric(label_raw[:,:,category].detach().cpu().numpy(), output_thres[:,:,category])
                             dicPred['Dice {:d}'.format(category+1)].append(dice_cat)
@@ -264,12 +322,13 @@ class Evaluate:
                     ipos += 1
         
         keys = [key for key in dicPred.keys()]
+
         for key in keys:
             if len(dicPred[key]) == 0:
                 dicPred.pop(key, None)
         # print the dictionary of parameters
         # print(self.dicPara)
-        return dice/len(self.dataloader.dataset)/self.args.category, dicPred, dicSubmit
+        return dice/len(self.dataloader.dataset)/self.args.category, dicPred, dicSubmit, dicPseudo
 
 
     def plot_sampled_predict(self):
