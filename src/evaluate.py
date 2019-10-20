@@ -155,11 +155,11 @@ class Evaluate:
                                                        self.dicPara['thres_oth{:d}'.format(category+1)],\
                                                        self.dicPara['size_oth{:d}'.format(category+1)]
 
-            pbounds = {'thres_seg'  : (thres_seg*0.9 , thres_seg*1.1), \
-                       'size_seg'   : (size_seg*0.9  , size_seg*1.1 ), \
-                       'thres_oth'  : (thres_oth*0.9 , thres_oth*1.1), \
-                       'size_oth'   : (size_oth*0.9  , size_oth*1.1 ), \
-                       'thres_after': (0.1, thres_seg)}
+            pbounds = {'thres_seg'  : (thres_seg*0.95 , thres_seg*1.05), \
+                       'size_seg'   : (size_seg *0.95  , size_seg*1.05), \
+                       'thres_oth'  : (thres_oth*0.95 , thres_oth*1.05), \
+                       'size_oth'   : (size_oth *0.95  , size_oth*1.05), \
+                       'thres_after': (0.2, thres_seg * 0.95)}
                        
             optimizer = BayesianOptimization(f = cal_dice, pbounds = pbounds, random_state = 1)   
             
