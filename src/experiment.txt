@@ -451,3 +451,45 @@ Sample Ratio
 
 
 	3. Pseudo labeling
+
+
+2019/10/20
+
+	1. Ensemble Normalize 1 Resnet and Seresnet
+
+	Category 1: Mean 0.9761, True Area[Neg,0.0000; Pos,0.0127], Pred Dice[Neg,0.9974; Pos,0.6471], Dice Diff[Neg,5.000; Pos,43.060]
+	Category 2: Mean 0.9921, True Area[Neg,0.0000; Pos,0.0093], Pred Dice[Neg,0.9995; Pos,0.6348], Dice Diff[Neg,1.000; Pos,14.975]
+	Category 3: Mean 0.8761, True Area[Neg,0.0000; Pos,0.0634], Pred Dice[Neg,0.9716; Pos,0.7455], Dice Diff[Neg,33.000; Pos,216.075]
+	Category 4: Mean 0.9830, True Area[Neg,0.0000; Pos,0.0870], Pred Dice[Neg,0.9984; Pos,0.7624], Dice Diff[Neg,3.000; Pos,31.124]
+	Final SWA Dice 0.957
+
+	2. Ensemble Normalize 1 Resnet and Seresnet (Finetune)
+
+	Category 1: Mean 0.9769, True Area[Neg,0.0000; Pos,0.0127], Pred Dice[Neg,0.9979; Pos,0.6527], Dice Diff[Neg,4.000; Pos,42.373]
+	Category 2: Mean 0.9921, True Area[Neg,0.0000; Pos,0.0093], Pred Dice[Neg,0.9995; Pos,0.6348], Dice Diff[Neg,1.000; Pos,14.975]
+	Category 3: Mean 0.8768, True Area[Neg,0.0000; Pos,0.0634], Pred Dice[Neg,0.9759; Pos,0.7411], Dice Diff[Neg,28.000; Pos,219.822]
+	Category 4: Mean 0.9834, True Area[Neg,0.0000; Pos,0.0870], Pred Dice[Neg,0.9984; Pos,0.7681], Dice Diff[Neg,3.000; Pos,30.377]
+
+	Final SWA Dice 0.957
+
+	{'thres_seg1': 0.4200068906873809, 'size_seg1': 575.5597635298989, 'thres_oth1': 0.7455922554652877, 'size_oth1': 2158.335285209748, 'thres_seg2': 0.4753913391087913, 'size_seg2': 1205.8537575384235, 'thres_oth2': 0.17799303492394042, 'size_oth2': 3607.2757185223327, 'thres_seg3': 0.5591144407084163, 'size_seg3': 658.5682588817291, 'thres_oth3': 0.46659225487453077, 'size_oth3': 2396.692949976408, 'thres_seg4': 0.3818053623116013, 'size_seg4': 1234.5010110509038, 'thres_oth4': 0.5335350987188763, 'size_oth4': 2974.3554843881075, 'thres_after1': 0.4522357453666914, 'thres_after2': 0.46432200553898517, 'thres_after3': 0.5082858551894693, 'thres_after4': 0.416975723980465}
+
+
+	3. Change the validation set
+
+	1) Resnet34
+
+		Category 1: Mean 0.9684, True Area[Neg,0.0000; Pos,0.0105], Pred Dice[Neg,0.9963; Pos,0.6066], Dice Diff[Neg,7.000; Pos,56.646]
+		Category 2: Mean 0.9930, True Area[Neg,0.0000; Pos,0.0081], Pred Dice[Neg,0.9995; Pos,0.6708], Dice Diff[Neg,1.000; Pos,13.168]
+		Category 3: Mean 0.8678, True Area[Neg,0.0000; Pos,0.0630], Pred Dice[Neg,0.9638; Pos,0.7297], Dice Diff[Neg,43.000; Pos,222.763]
+		Category 4: Mean 0.9850, True Area[Neg,0.0000; Pos,0.0762], Pred Dice[Neg,0.9995; Pos,0.7727], Dice Diff[Neg,1.000; Pos,29.095]
+		Final SWA Dice 0.954
+
+	2) SeResNet50
+
+		Category 1: Mean 0.9714, True Area[Neg,0.0000; Pos,0.0105], Pred Dice[Neg,0.9963; Pos,0.6493], Dice Diff[Neg,7.000; Pos,50.503]
+		Category 2: Mean 0.9934, True Area[Neg,0.0000; Pos,0.0081], Pred Dice[Neg,0.9995; Pos,0.6933], Dice Diff[Neg,1.000; Pos,12.267]
+		Category 3: Mean 0.8706, True Area[Neg,0.0000; Pos,0.0630], Pred Dice[Neg,0.9579; Pos,0.7448], Dice Diff[Neg,50.000; Pos,210.271]
+		Category 4: Mean 0.9837, True Area[Neg,0.0000; Pos,0.0762], Pred Dice[Neg,0.9984; Pos,0.7672], Dice Diff[Neg,3.000; Pos,29.805]
+		Final SWA Dice 0.955
+

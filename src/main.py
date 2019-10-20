@@ -432,11 +432,11 @@ if __name__ == '__main__':
             raise NotImplementedError
     elif args.loss == 3:
         if args.output == 0:    
-            criterion = [criterion_wbce_lovasz, None]
+            criterion = [criterion_wbce_lovasz_symmetric, None]
         elif args.output == 1:
-            criterion = [criterion_wbce_lovasz, criterion_wmse]
+            criterion = [criterion_wbce_lovasz_symmetric, criterion_wmse]
         elif args.output == 2:
-            criterion = [criterion_wbce_lovasz, criterion_wbce]
+            criterion = [criterion_wbce_lovasz_symmetric, criterion_wbce]
         else:
             raise NotImplementedError
 
