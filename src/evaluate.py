@@ -51,20 +51,13 @@ def evaluate_loader(net, device, criterion, dataloader, args):
 
 
 def post_process_single(pred, other, thres_seg = 0.5, size_seg = 100, thres_oth = -float('inf'), size_oth = 0, thres_after = -float('inf')):
-    if thres_after != -float('inf'):
-        pred_agg = (pred > thres_seg).astype(int)
-        nsize = pred_agg.sum()
-    else:
-        pred = (pred > thres_seg).astype(int)
-        nsize = pred.sum()
+    pred = (pred > thres_seg).astype(int)
+    nsize = pred.sum()
     # TTA: combining classification and size thresholding 
-    if nsize < size_seg or (nsize < size_oth+size_seg and other < thres_oth):
+    if nsize < size_seg or (nsize < size_oth + size_seg and other < thres_oth):
         return pred * 0
     # additional postprocessing
-    if thres_after != -float('inf'):
-        return (pred > thres_after).astype(int)
-    else:
-        return pred
+    return pred
 
 
 def post_process(pred, other, dicPara):
@@ -76,10 +69,6 @@ def post_process(pred, other, dicPara):
                         'thres_oth{:d}'.format(category+1), 'size_oth{:d}'.format(category+1))]
         else:
             paras = [dicPara[item] for item in ('thres_seg{:d}'.format(category+1), 'size_seg{:d}'.format(category+1))]
-        # after processing
-        if 'thres_after{:d}'.format(category+1) in dicPara:
-            paras.append(dicPara['thres_after{:d}'.format(category+1)])
-
         pred[:,:,category] = post_process_single(pred[:,:,category], other[category], *paras)
 
     return pred
@@ -158,8 +147,7 @@ class Evaluate:
             pbounds = {'thres_seg'  : (thres_seg*0.95 , thres_seg*1.05), \
                        'size_seg'   : (size_seg *0.95  , size_seg*1.05), \
                        'thres_oth'  : (thres_oth*0.95 , thres_oth*1.05), \
-                       'size_oth'   : (size_oth *0.95  , size_oth*1.05), \
-                       'thres_after': (0.2, thres_seg * 0.95)}
+                       'size_oth'   : (size_oth *0.95  , size_oth*1.05)}
                        
             optimizer = BayesianOptimization(f = cal_dice, pbounds = pbounds, random_state = 1)   
             
@@ -171,7 +159,7 @@ class Evaluate:
                 optimizer.maximize(init_points = 200, n_iter = 150)
             
             # store the parameters
-            for spara in ('thres_seg', 'size_seg', 'thres_oth', 'size_oth', 'thres_after'):
+            for spara in ('thres_seg', 'size_seg', 'thres_oth', 'size_oth'):
                 self.dicPara['{:s}{:d}'.format(spara, category+1)] = optimizer.max['params'][spara]
 
         
