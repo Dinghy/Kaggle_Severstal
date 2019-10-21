@@ -390,11 +390,11 @@ if __name__ == '__main__':
     elif args.model == 'ensemble':
         if args.load_mod:
             nets = []
-            model_files = glob.glob('../outputs/20191020/*.pth')
-
+            model_files = glob.glob('../output/20191020/*.pth')
+            print(model_files)
             for model_file in model_files:
                 # concatenate the file name
-                if model_file.find('se') != -1:
+                if model_file.find('se_res') != -1:
                     model_type = 'se_resnet50'
                 else:
                     model_type = 'resnet34'
