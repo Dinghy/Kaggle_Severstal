@@ -150,17 +150,38 @@ def train_net(net, criterion, optimizer, device, args, LOG_FILE, MODEL_FILE):
     else:
         return net.state_dict(), history
 
+def get_pseudo(pseudo_path, pseudo_df):
+    # get all file name
+    afile  = np.array([file[:-2] for file in pseudo_df['ImageId_ClassId'][::4]])
+    # get all trust 
+    atrust = np.array(pseudo_df.Trust).reshape(-1,4)
+    # get the tag for each file
+    atag = (np.sum(np.logical_or(atrust <= 0.05, atrust >= 0.95).astype(int), axis = 1)==4)
+
+    # return the names,
+    files = afile[atag]
+    file_paths = [pseudo_path+file for file in files]
+
+    # return the dataframe
+    pseudo_df = pseudo_df.set_index(['ImageId_ClassId'])
+    classid_files = []
+    for file in files:
+        classid_files += [file+'_{:d}'.format(i+1) for i in range(4)]
+    part_df = pseudo_df.loc[classid_files, 'EncodedPixels'].reset_index()
+    return file_paths, part_df
+
 
 if __name__ == '__main__':
     # argsparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--load_split',   action = 'store_false', default = True,    help = 'Rerun train/test split')
-    parser.add_argument('--accumulate',   action = 'store_false', default = True,    help = 'Not doing gradient accumulation or not')
-    parser.add_argument('--bayes_opt',    action = 'store_true',  default = False,   help = 'Do Bayesian optimization in finding hyper-parameters')
-    parser.add_argument('-l','--load_mod',action = 'store_true',  default = False,   help = 'Load a pre-trained model')
-    parser.add_argument('-t','--test_run',action = 'store_true',  default = False,   help = 'Run the script quickly to check all functions')
-    parser.add_argument('--VAT',          action = 'store_true',  default = False,   help = 'Add VAT loss in the loss functions')
-    parser.add_argument('--bo_fineTune',  action = 'store_true',  default = False,   help = 'Fine-Tuning BO result')
+    parser.add_argument('--load_split',   action = 'store_false', default = True,    help = 'Rerun train/test split.')
+    parser.add_argument('--accumulate',   action = 'store_false', default = True,    help = 'Not doing gradient accumulation or not.')
+    parser.add_argument('--bayes_opt',    action = 'store_true',  default = False,   help = 'Do Bayesian optimization in finding hyper-parameters.')
+    parser.add_argument('-l','--load_mod',action = 'store_true',  default = False,   help = 'Load a pre-trained model.')
+    parser.add_argument('-t','--test_run',action = 'store_true',  default = False,   help = 'Run the script quickly to check all functions.')
+    parser.add_argument('--VAT',          action = 'store_true',  default = False,   help = 'Add VAT loss in the loss functions.')
+    parser.add_argument('--bo_fineTune',  action = 'store_true',  default = False,   help = 'Fine-Tuning BO result.')
+    parser.add_argument('--pseudo',       action = 'store_true',  default = False,   help = 'Run the pseudo labeling.')
 
     parser.add_argument('--decoder',     type = str,  default = 'cbam_con', help = 'Structure in the Unet decoder')
     parser.add_argument('--normalize',   type = int,  default = 1,          help = 'Normalize the images or not')
@@ -188,6 +209,8 @@ if __name__ == '__main__':
         print('{}: {}'.format(key, val))
     print('===========================\n')
 
+
+    ########################################################################
     # input folder paths
     TRAIN_PATH  = '../input/severstal-steel-defect-detection/train_images/'
     TEST_PATH   = '../input/severstal-steel-defect-detection/test_images/'
@@ -215,89 +238,39 @@ if __name__ == '__main__':
     mask_df = pd.read_csv(TRAIN_MASKS).set_index(['ImageId_ClassId']).fillna('-1')
     print(mask_df.head())
     print('===========================\n')
-    ########################################################################
-    # if test run a small version
+    
+    # if in the test run, run a small version
     if args.test_run:
         rows = 100
         TEST_FILES = TEST_FILES[:100]
     else:
         rows = len(TRAIN_FILES_ALL)
         
-    # Re run train test split
-    if not args.load_split:
-        # get train and test for statistics
-        steel_ds       = SteelDataset(TRAIN_FILES_ALL, args,  mask_df = mask_df)
-        steel_ds_test  = SteelDataset(TEST_FILES, args)
+    # TO DO: change this part
+    # load validation id 
+    valid_data_df = pd.read_csv('validID.csv')
+    print(valid_data_df.head())
+    X_valid = list(valid_data_df['Valid'])[:rows]
+    X_train = list(set(np.arange(len(TRAIN_FILES_ALL))) - set(X_valid))[:rows]
 
-        # there is a deviation in mean in this data set.
-        stat_df_test = steel_ds_test.stat_images(rows)
-        stat_df = steel_ds.stat_images(rows)
+    # get the train and valid files
+    TRAIN_FILES = [TRAIN_FILES_ALL[i] for i in X_train]
+    VALID_FILES = [TRAIN_FILES_ALL[i] for i in X_valid]
 
-        train_mean, train_std = stat_df['mean'].mean(), stat_df['std'].std()
-        test_mean, test_std   = stat_df_test['mean'].mean(), stat_df_test['std'].std()
+    if args.pseudo:
+	    pseudo_df = pd.read_csv('Pseudo.csv')
+		TEST_FILES_PL, mask_df_pl = get_pseudo('../input/severstal-steel-defect-detection/', pseudo_df)
 
-        # get the labels from the data
-        labels = list(stat_df.apply(lambda x:int(x['Class 1'] != 0) + \
-                            int(x['Class 2'] != 0) + \
-                            int(x['Class 3'] != 0) + \
-                            int(x['Class 4'] != 0) != 0, axis=1))
-        # save the statistics
-        X_train, X_valid, _, _ = train_test_split(np.arange(stat_df.shape[0]), labels, test_size = 0.16, random_state = 1234)
-        valid_df = pd.DataFrame({'Valid':X_valid})
-        valid_df.to_csv(VALID_ID_FILE)
-        stat_df_valid = stat_df.iloc[X_valid,:]
+		# concatenate the dataframe and the file paths
+		mask_df = pd.concat([mask_df.reset_index(), mask_df_pl], axis = 0).set_index(['ImageId_ClassId']).fillna('-1')
+		TRAIN_FILES = TRAIN_FILES + TEST_FILES_PL
 
-        # print statistics
-        sout =  '\n========   Train Stat ==========\n' + analyze_labels(stat_df.iloc[X_train,:]) +\
-                '======== Validation Stat ==========\n' + analyze_labels(stat_df_valid)+'\n'
-        print2file(sout, LOG_FILE)
-
-        # plot the distributions
-        fig, axs = plt.subplots(1,2, figsize=(16,5))
-        sns.distplot(stat_df['mean'], ax=axs[0], kde_kws={"label": "Train"}); axs[0].set_title('Distribution of mean');
-        sns.distplot(stat_df['std'] , ax=axs[1], kde_kws={"label": "Train"}); axs[1].set_title('Distribution of std');
-        sns.distplot(stat_df_test['mean'], ax=axs[0], kde_kws={"label": "Test"}); 
-        sns.distplot(stat_df_test['std'] , ax=axs[1], kde_kws={"label": "Test"}); 
-        plt.savefig('../output/Distribution.png')
-
-        # get the train and valid files
-        TRAIN_FILES = [TRAIN_FILES_ALL[i] for i in X_train]
-        VALID_FILES = [TRAIN_FILES_ALL[i] for i in X_valid]
-
-    else: # load previous result
-        train_mean, train_std = 0.3438812517320016, 0.056746666005067205
-        test_mean, test_std = 0.25951299299868136, 0.051800296725619116
-        # TO DO: change this part
-        # load validation id 
-        valid_data_df = pd.read_csv('validID.csv')
-        print(valid_data_df.head())
-        X_valid = list(valid_data_df['Valid'])[:rows]
-        X_train = list(set(np.arange(len(TRAIN_FILES_ALL))) - set(X_valid))[:rows]
-
-        # get the train and valid files
-        TRAIN_FILES = [TRAIN_FILES_ALL[i] for i in X_train]
-        VALID_FILES = [TRAIN_FILES_ALL[i] for i in X_valid]
-
-        steel_ds_valid = SteelDataset(VALID_FILES, args, mask_df = mask_df)
-        stat_df_valid = steel_ds_valid.stat_images(rows)
-
-        # print statistics
-        sout =  '======== Validation Stat ==========\n' + analyze_labels(stat_df_valid)+'\n'
-        print2file(sout, LOG_FILE)
-
+    ########################################################################
+    # Augmentations
     # not using sophisticated normalize
     #if args.normalize == 0:
     norm_mean, norm_std = (0,0,0), (1,1,1)
 
-    sout = 'Train/Test {:d}/{:d}\n'.format(len(TRAIN_FILES_ALL), len(TEST_FILES)) + \
-            'Train mean/std {:.3f}/{:.3f}\n'.format(train_mean, train_std) + \
-            'Test mean/std {:.3f}/{:.3f}\n'.format(test_mean, test_std) +\
-            'Train num/sample {:d}'.format(len(TRAIN_FILES)) + ' '.join(TRAIN_FILES[:2]) + \
-            '\nValid num/sample {:d}'.format(len(VALID_FILES)) + ' '.join(VALID_FILES[:2])+'\n'
-    print2file(sout, LOG_FILE)
-
-    ########################################################################
-    # Augmentations
     augment_train = Compose([
         Flip(p=0.5),          # Flip vertically or horizontally or both
         RandomBrightnessContrast(p = 0.3),
