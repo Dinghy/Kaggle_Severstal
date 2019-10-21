@@ -150,6 +150,7 @@ def train_net(net, criterion, optimizer, device, args, LOG_FILE, MODEL_FILE):
     else:
         return net.state_dict(), history
 
+
 def get_pseudo(pseudo_path, pseudo_df):
     # get all file name
     afile  = np.array([file[:-2] for file in pseudo_df['ImageId_ClassId'][::4]])
@@ -182,11 +183,12 @@ if __name__ == '__main__':
     parser.add_argument('--VAT',          action = 'store_true',  default = False,   help = 'Add VAT loss in the loss functions.')
     parser.add_argument('--bo_fineTune',  action = 'store_true',  default = False,   help = 'Fine-Tuning BO result.')
     parser.add_argument('--pseudo',       action = 'store_true',  default = False,   help = 'Run the pseudo labeling.')
-
-    parser.add_argument('--decoder',     type = str,  default = 'cbam_con', help = 'Structure in the Unet decoder')
-    parser.add_argument('--normalize',   type = int,  default = 1,          help = 'Normalize the images or not')
+    
+    parser.add_argument('--folder',      type = str,  default = '20191021', help = 'The folder to store the model_swa')
+    parser.add_argument('--decoder',     type = str,  default = 'cbam_con', help = 'The structure in the Unet decoder')
+    parser.add_argument('--normalize',   type = int,  default = 1,          help = 'The method to normalize the images, 0 not normalize, 1 normalize to imagenet, 2 normalize to this data set')
     parser.add_argument('--wlovasz',     type = float,default = 0.2,        help = 'The weight used in Lovasz loss')
-    parser.add_argument('--augment',     type = int,  default = 0,          help = 'The type of train augmentations: 0 vanilla, 1 add contrast, 2 add  ')
+    parser.add_argument('--augment',     type = int,  default = 0,          help = '(Deplicated) The type of train augmentations: 0 vanilla, 1 add contrast, 2 add  ')
     parser.add_argument('--loss',        type = int,  default = 2,          help = 'The loss: 0 BCE vanilla; 1 wbce+dice; 2 wbce+lovasz.')
     parser.add_argument('--sch',         type = int,  default = 2,          help = 'The schedule of the learning rate: 0 step; 1 cosine annealing; 2 cosine annealing with warmup.')    
     parser.add_argument('-m', '--model', type = str,  default = 'resnet34', help = 'The backbone network of the neural network.')
@@ -201,6 +203,7 @@ if __name__ == '__main__':
     parser.add_argument('--eva_method',  type = int,  default = 1,          help = 'The evaluation method in postprocessing: 0 thres/size; 1 thres/size/classify; 2 thres/size/classify/after')
     parser.add_argument('--vat_xi',      type = float,default = 0.01,       help = 'How much we modify each pixel in VAT')
     args = parser.parse_args()
+
 
     ######################################################
     seed_everything(seed = args.seed)
@@ -222,7 +225,7 @@ if __name__ == '__main__':
     
     VALID_ID_FILE = '../output/validID_{:s}.csv'.format(strSpec)
     MODEL_FILE    = '../output/model_{:s}.pth'.format(strSpec)
-    MODEL_SWA_FILE= '../output/20191020/model_swa_{:s}.pth'.format(strSpec)
+    MODEL_SWA_FILE= '../output/{:s}/model_swa_{:s}.pth'.format(args.folder, strSpec)
     HISTORY_FILE  = '../output/history_{:s}.csv'.format(strSpec)
     LOG_FILE      = '../output/log_{:s}.txt'.format(strSpec)
     # rewrite the file if not load mod
@@ -241,8 +244,8 @@ if __name__ == '__main__':
     
     # if in the test run, run a small version
     if args.test_run:
-        rows = 100
-        TEST_FILES = TEST_FILES[:100]
+        rows = 200
+        TEST_FILES = TEST_FILES[:64]
     else:
         rows = len(TRAIN_FILES_ALL)
         
@@ -258,12 +261,18 @@ if __name__ == '__main__':
     VALID_FILES = [TRAIN_FILES_ALL[i] for i in X_valid]
 
     if args.pseudo:
-	    pseudo_df = pd.read_csv('Pseudo.csv')
-		TEST_FILES_PL, mask_df_pl = get_pseudo('../input/severstal-steel-defect-detection/', pseudo_df)
+        # print(TRAIN_FILES[:3])
+        # print(mask_df.head())
+        # print(len(TRAIN_FILES), mask_df.shape)
+        pseudo_df = pd.read_csv('Pseudo.csv')
+        TEST_FILES_PL, mask_df_pl = get_pseudo('../input/severstal-steel-defect-detection/test_images/', pseudo_df)
 
-		# concatenate the dataframe and the file paths
-		mask_df = pd.concat([mask_df.reset_index(), mask_df_pl], axis = 0).set_index(['ImageId_ClassId']).fillna('-1')
-		TRAIN_FILES = TRAIN_FILES + TEST_FILES_PL
+        # concatenate the dataframe and the file paths
+        mask_df = pd.concat([mask_df.reset_index(), mask_df_pl], axis = 0).set_index(['ImageId_ClassId']).fillna('-1')
+        TRAIN_FILES = TRAIN_FILES + TEST_FILES_PL
+        # print(TRAIN_FILES[-3:])
+        # print(mask_df.tail())
+        print(len(TRAIN_FILES), mask_df.shape)
 
     ########################################################################
     # Augmentations
@@ -288,44 +297,6 @@ if __name__ == '__main__':
     augment_test = Compose([
         Normalize(mean = norm_mean, std = norm_std),
         ToFloat(max_value = 1.)],p = 1)
-
-
-    ########################################################################
-    # do some simple checking
-    if True:
-        # check rle2mask and mask2rle
-        # mask_df = pd.read_csv(TRAIN_MASKS).set_index(['ImageId_ClassId']).fillna('-1')
-        #for i, pixel in enumerate(mask_df['EncodedPixels']):
-        #    if pixel != '-1':
-        #        rle_pass = mask2rle(rle2mask(pixel, 1600, 256))
-        #        if rle_pass != pixel:
-        #            print(i)
-                    
-        # check dataloader            
-        steel_ds = SteelDataset(TRAIN_FILES, args, mask_df = mask_df)
-        steel_ds_train = SteelDataset(TRAIN_FILES, args, mask_df = mask_df, augment = augment_train)
-        steel_ds_valid = SteelDataset(VALID_FILES, args, mask_df = mask_df, augment = augment_valid)
-        res = steel_ds_train[1]
-        image, mask = res[0], res[1]
-        print(image.shape, image.min(), image.max())
-        print(mask.shape, mask.min(), mask.max())
-        res = steel_ds_valid[1]
-        image, mask = res[0], res[1]
-        print(image.shape, image.min(), image.max())
-        print(mask.shape, mask.min(), mask.max())
-
-        # check on the images
-        nplot = 4
-        fig, axs = plt.subplots(nplot, 2, figsize=(16,nplot*2))
-        for i in range(nplot):
-            ax = axs[divmod(i, 2)]
-            ax.axis('off')
-            plot_mask(*steel_ds[i][:2], ax)
-
-            ax = axs[divmod(i + nplot, 2)]
-            plot_mask(*steel_ds_train[i][:2], ax)
-            ax.axis('off')
-        plt.savefig('../output/Dataset_augment.png')
 
 
     ########################################################################
@@ -363,7 +334,7 @@ if __name__ == '__main__':
     elif args.model == 'ensemble':
         if args.load_mod:
             nets = []
-            model_files = glob.glob('../output/20191020/*.pth')
+            model_files = glob.glob('../output/{:s}/*.pth'.format(args.folder))
             print(model_files)
             for model_file in model_files:
                 # concatenate the file name
