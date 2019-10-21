@@ -184,7 +184,7 @@ if __name__ == '__main__':
     parser.add_argument('--bo_fineTune',  action = 'store_true',  default = False,   help = 'Fine-Tuning BO result.')
     parser.add_argument('--pseudo',       action = 'store_true',  default = False,   help = 'Run the pseudo labeling.')
     
-    parser.add_argument('--folder',      type = str,  default = '20191021', help = 'The folder to store the model_swa')
+    parser.add_argument('--folder',      type = str,  default = '20191020', help = 'The folder to store the model_swa')
     parser.add_argument('--decoder',     type = str,  default = 'cbam_con', help = 'The structure in the Unet decoder')
     parser.add_argument('--normalize',   type = int,  default = 1,          help = 'The method to normalize the images, 0 not normalize, 1 normalize to imagenet, 2 normalize to this data set')
     parser.add_argument('--wlovasz',     type = float,default = 0.2,        help = 'The weight used in Lovasz loss')
@@ -270,8 +270,9 @@ if __name__ == '__main__':
         # concatenate the dataframe and the file paths
         mask_df = pd.concat([mask_df.reset_index(), mask_df_pl], axis = 0).set_index(['ImageId_ClassId']).fillna('-1')
         TRAIN_FILES = TRAIN_FILES + TEST_FILES_PL
-        # print(TRAIN_FILES[-3:])
-        # print(mask_df.tail())
+        print(TRAIN_FILES[-1], TRAIN_FILES[1])
+        print(mask_df.head(1))
+        print(mask_df.tail(1))
         print(len(TRAIN_FILES), mask_df.shape)
 
     ########################################################################
@@ -447,9 +448,7 @@ if __name__ == '__main__':
                     # evaluate the prediction
             sout = '\n\nFinal SWA Dice {:.3f}\n'.format(dice) +\
                 '==============SWA Predict===============\n' + \
-                analyze_labels(pd.DataFrame(dicPred)) + \
-                '==============True===============\n' + \
-                analyze_labels(stat_df_valid)
+                analyze_labels(pd.DataFrame(dicPred))
             
             print(sout)
             print2file(sout, LOG_FILE)

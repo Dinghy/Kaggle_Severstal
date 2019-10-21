@@ -81,12 +81,12 @@ class Evaluate:
         if not isinstance(net, list):
             self.net = [net]
         else:
-            self.net = net
-        self.device = device
+            self.net    = net
+        self.device     = device
         self.dataloader = dataloader
-        self.dicPara = dicPara
-        self.isTest = isTest
-
+        self.dicPara    = dicPara
+        self.isTest     = isTest
+        self.flip_num   = 2
 
     def eval_net(self):
         if isinstance(self.net, list):
@@ -245,7 +245,7 @@ class Evaluate:
 
         # obtain the prediction
         for net in self.net:
-            for i in range(4):
+            for i in range(self.flip_num):
                 lr, ud = divmod(i, 2)
                 image = image_raw.detach().numpy()   # torch.Size([256, 1600, 3])
                 if lr == 1: # flip left to right
@@ -275,7 +275,7 @@ class Evaluate:
                 # merge the result
                 output_mask += outputs
 
-        return output_mask/4/len(self.net), output_label/4/len(self.net)
+        return output_mask/self.flip_num/len(self.net), output_label/self.flip_num/len(self.net)
 
 
     def predict_flip_batch(self, images):
@@ -286,7 +286,7 @@ class Evaluate:
 
         # obtain the prediction
         for net in self.net:
-            for i in range(4):
+            for i in range(self.flip_num):
                 lr, ud = divmod(i, 2)
                 images_batch = images.clone()
                 # torch.Size([8, 3, 256, 1600])
@@ -318,7 +318,7 @@ class Evaluate:
                 self.output_mask += masks.permute(0, 2, 3, 1).detach().cpu().numpy()
                 self.output_label += labels.detach().cpu().numpy()
 
-        return self.output_mask/4/len(self.net), self.output_label/4/len(self.net)
+        return self.output_mask/self.flip_num/len(self.net), self.output_label/self.flip_num/len(self.net)
 
     
     def predict_dataloader(self, to_rle = False, fnames = None, gen_pseudo = True):
