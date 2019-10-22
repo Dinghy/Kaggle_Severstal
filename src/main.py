@@ -1,3 +1,4 @@
+import shutil
 import glob
 import os
 import cv2
@@ -239,9 +240,8 @@ if __name__ == '__main__':
     
     # read in the masks
     mask_df = pd.read_csv(TRAIN_MASKS).set_index(['ImageId_ClassId']).fillna('-1')
-    print(mask_df.head())
     print('===========================\n')
-    
+    print('Validation File')
     # if in the test run, run a small version
     if args.test_run:
         rows = 200
@@ -259,9 +259,10 @@ if __name__ == '__main__':
     # get the train and valid files
     TRAIN_FILES = [TRAIN_FILES_ALL[i] for i in X_train]
     VALID_FILES = [TRAIN_FILES_ALL[i] for i in X_valid]
-
+    
     if args.pseudo:
-        # print(TRAIN_FILES[:3])
+        print('===========================\n')# print(TRAIN_FILES[:3])
+        print('Pseudo Labeling')
         # print(mask_df.head())
         # print(len(TRAIN_FILES), mask_df.shape)
         pseudo_df = pd.read_csv('Pseudo.csv')
@@ -270,10 +271,19 @@ if __name__ == '__main__':
         # concatenate the dataframe and the file paths
         mask_df = pd.concat([mask_df.reset_index(), mask_df_pl], axis = 0).set_index(['ImageId_ClassId']).fillna('-1')
         TRAIN_FILES = TRAIN_FILES + TEST_FILES_PL
-        print(TRAIN_FILES[-1], TRAIN_FILES[1])
+        # TRAIN_FILES = glob.glob('../input/severstal-steel-defect-detection/train_pl_images/*.jpg')
+        # if args.test_run:
+        #     TRAIN_FILES = TRAIN_FILES[:1000]
+        # store them together
+        # for file_path in tqdm(TRAIN_FILES):
+        #     shutil.copy(file_path, '../input/severstal-steel-defect-detection/train_pl_images/')
+        
+        # print(len(glob.glob('../input/severstal-steel-defect-detection/train_pl_images/*.jpg')))
+        # raise ValueError
+        print(TRAIN_FILES[-1])
+        print(TRAIN_FILES[1])
         print(mask_df.head(1))
         print(mask_df.tail(1))
-        print(len(TRAIN_FILES), mask_df.shape)
 
     ########################################################################
     # Augmentations
@@ -310,7 +320,7 @@ if __name__ == '__main__':
     # create the dataloader
     trainloader = torch.utils.data.DataLoader(steel_ds_train, batch_size = args.batch, shuffle = True, num_workers = 4)
     validloader = torch.utils.data.DataLoader(steel_ds_valid, batch_size = args.batch, shuffle = False, num_workers = 4)
-    vatloader = torch.utils.data.DataLoader(steel_ds_test, batch_size = args.batch, sampler = InfiniteSampler(len(steel_ds_test)), num_workers = 4)
+    vatloader = torch.utils.data.DataLoader(steel_ds_test, batch_size = args.batch, sampler = InfiniteSampler(len(steel_ds_test)), num_workers = 0)
     # cpu or gpu
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
