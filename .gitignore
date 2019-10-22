@@ -1,3 +1,10 @@
 *.pth
 *.zip
 *.pyc
+*.png
+
+output/
+!output/.gitkeep
+
+input/
+!input/.gitkeep

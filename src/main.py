@@ -184,7 +184,8 @@ if __name__ == '__main__':
     parser.add_argument('--VAT',          action = 'store_true',  default = False,   help = 'Add VAT loss in the loss functions.')
     parser.add_argument('--bo_fineTune',  action = 'store_true',  default = False,   help = 'Fine-Tuning BO result.')
     parser.add_argument('--pseudo',       action = 'store_true',  default = False,   help = 'Run the pseudo labeling.')
-    
+    parser.add_argument('--train_all',    action = 'store_true',  default = False,   help = 'Train with all training files.') 
+  
     parser.add_argument('--folder',      type = str,  default = '20191020', help = 'The folder to store the model_swa')
     parser.add_argument('--decoder',     type = str,  default = 'cbam_con', help = 'The structure in the Unet decoder')
     parser.add_argument('--normalize',   type = int,  default = 1,          help = 'The method to normalize the images, 0 not normalize, 1 normalize to imagenet, 2 normalize to this data set')
@@ -249,7 +250,6 @@ if __name__ == '__main__':
     else:
         rows = len(TRAIN_FILES_ALL)
         
-    # TO DO: change this part
     # load validation id 
     valid_data_df = pd.read_csv('validID.csv')
     print(valid_data_df.head())
@@ -257,34 +257,28 @@ if __name__ == '__main__':
     X_train = list(set(np.arange(len(TRAIN_FILES_ALL))) - set(X_valid))[:rows]
 
     # get the train and valid files
-    TRAIN_FILES = [TRAIN_FILES_ALL[i] for i in X_train]
+    if args.train_all: # use all training files
+        TRAIN_FILES = [filepath for filepath in TRAIN_FILES_ALL]
+    else:
+        TRAIN_FILES = [TRAIN_FILES_ALL[i] for i in X_train]
+
     VALID_FILES = [TRAIN_FILES_ALL[i] for i in X_valid]
     
-    if args.pseudo:
+    if args.pseudo:   # add pseudo labelled testing files.
         print('===========================\n')# print(TRAIN_FILES[:3])
         print('Pseudo Labeling')
-        # print(mask_df.head())
-        # print(len(TRAIN_FILES), mask_df.shape)
         pseudo_df = pd.read_csv('Pseudo.csv')
         TEST_FILES_PL, mask_df_pl = get_pseudo('../input/severstal-steel-defect-detection/test_images/', pseudo_df)
 
         # concatenate the dataframe and the file paths
         mask_df = pd.concat([mask_df.reset_index(), mask_df_pl], axis = 0).set_index(['ImageId_ClassId']).fillna('-1')
         TRAIN_FILES = TRAIN_FILES + TEST_FILES_PL
-        # TRAIN_FILES = glob.glob('../input/severstal-steel-defect-detection/train_pl_images/*.jpg')
-        # if args.test_run:
-        #     TRAIN_FILES = TRAIN_FILES[:1000]
-        # store them together
-        # for file_path in tqdm(TRAIN_FILES):
-        #     shutil.copy(file_path, '../input/severstal-steel-defect-detection/train_pl_images/')
-        
-        # print(len(glob.glob('../input/severstal-steel-defect-detection/train_pl_images/*.jpg')))
-        # raise ValueError
         print(TRAIN_FILES[-1])
         print(TRAIN_FILES[1])
         print(mask_df.head(1))
         print(mask_df.tail(1))
 
+    print('TRAIN/VALID FILE NUM:', len(TRAIN_FILES), len(VALID_FIELS))
     ########################################################################
     # Augmentations
     # not using sophisticated normalize

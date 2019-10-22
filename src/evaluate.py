@@ -86,7 +86,7 @@ class Evaluate:
         self.dataloader = dataloader
         self.dicPara    = dicPara
         self.isTest     = isTest
-        self.flip_num   = 2
+        self.flip_num   = 4
 
     def eval_net(self):
         if isinstance(self.net, list):
@@ -207,11 +207,11 @@ class Evaluate:
             
             # using bayes optimize to determine the threshold
             if self.args.eva_method == 0:     # basic operation
-                pbounds = {'thres_seg': (0.4, 0.7), 'size_seg' : (500, 4000)}
+                pbounds = {'thres_seg': (0.4, 0.6), 'size_seg' : (500, 2000)}
             elif self.args.eva_method == 1 and self.args.output == 2:   # currently used version with classification
-                pbounds = {'thres_seg': (0.4, 0.7), 'size_seg' : (500, 4000), 'thres_oth':(0.1, 0.7), 'size_oth':(500, 4000)}
+                pbounds = {'thres_seg': (0.4, 0.6), 'size_seg' : (500, 2000), 'thres_oth':(0.25, 0.7), 'size_oth':(1000, 4000)}
             elif self.args.eva_method == 2 and self.args.output == 2:   # adding another thresholding after the conditions with zeros
-                pbounds = {'thres_seg': (0.4, 0.7), 'size_seg' : (500, 4000), 'thres_oth':(0.1, 0.7), 'size_oth':(500, 4000), 'thres_after':(0.3, 0.5)}
+                pbounds = {'thres_seg': (0.4, 0.6), 'size_seg' : (500, 2000), 'thres_oth':(0.25, 0.7), 'size_oth':(1000, 4000), 'thres_after':(0.3, 0.5)}
             optimizer = BayesianOptimization(f = cal_dice, pbounds = pbounds, random_state = 1)   
             
             # adjust the bayes opt stage
