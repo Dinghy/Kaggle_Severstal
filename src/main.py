@@ -185,7 +185,8 @@ if __name__ == '__main__':
     parser.add_argument('--bo_fineTune',  action = 'store_true',  default = False,   help = 'Fine-Tuning BO result.')
     parser.add_argument('--pseudo',       action = 'store_true',  default = False,   help = 'Run the pseudo labeling.')
     parser.add_argument('--train_all',    action = 'store_true',  default = False,   help = 'Train with all training files.') 
-  
+    parser.add_argument('--avg_test',     action = 'store_true',  default = False,   help = 'Test another ensemble method.')
+ 
     parser.add_argument('--folder',      type = str,  default = '20191020', help = 'The folder to store the model_swa')
     parser.add_argument('--decoder',     type = str,  default = 'cbam_con', help = 'The structure in the Unet decoder')
     parser.add_argument('--normalize',   type = int,  default = 1,          help = 'The method to normalize the images, 0 not normalize, 1 normalize to imagenet, 2 normalize to this data set')
@@ -245,7 +246,7 @@ if __name__ == '__main__':
     print('Validation File')
     # if in the test run, run a small version
     if args.test_run:
-        rows = 200
+        rows = 64
         TEST_FILES = TEST_FILES[:64]
     else:
         rows = len(TRAIN_FILES_ALL)
@@ -278,7 +279,7 @@ if __name__ == '__main__':
         print(mask_df.head(1))
         print(mask_df.tail(1))
 
-    print('TRAIN/VALID FILE NUM:', len(TRAIN_FILES), len(VALID_FIELS))
+    print('TRAIN/VALID FILE NUM:', len(TRAIN_FILES), len(VALID_FILES))
     ########################################################################
     # Augmentations
     # not using sophisticated normalize
@@ -312,8 +313,8 @@ if __name__ == '__main__':
     steel_ds_test = SteelDataset(TEST_FILES, args, augment = augment_test)    
         
     # create the dataloader
-    trainloader = torch.utils.data.DataLoader(steel_ds_train, batch_size = args.batch, shuffle = True, num_workers = 4)
-    validloader = torch.utils.data.DataLoader(steel_ds_valid, batch_size = args.batch, shuffle = False, num_workers = 4)
+    trainloader = torch.utils.data.DataLoader(steel_ds_train, batch_size = args.batch, shuffle = True, num_workers = 3)
+    validloader = torch.utils.data.DataLoader(steel_ds_valid, batch_size = args.batch, shuffle = False, num_workers = 3)
     vatloader = torch.utils.data.DataLoader(steel_ds_test, batch_size = args.batch, sampler = InfiniteSampler(len(steel_ds_test)), num_workers = 0)
     # cpu or gpu
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -436,9 +437,7 @@ if __name__ == '__main__':
         # evaluate the prediction
         sout = '\n\nFinal SWA Dice {:.3f}\n'.format(dice) +\
             '==============SWA Predict===============\n' + \
-                        analyze_labels(pd.DataFrame(dicPred)) + \
-                        '==============True===============\n' + \
-                        analyze_labels(stat_df_valid)
+                        analyze_labels(pd.DataFrame(dicPred))
         
         print(sout)
         print2file(sout, LOG_FILE)

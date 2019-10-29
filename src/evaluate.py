@@ -73,6 +73,8 @@ def post_process(pred, other, dicPara):
 
     return pred
 
+def sigmoid(x):
+    return 1/(1+np.exp(-x))
 
 class Evaluate:
     # evaluate the models or a list of models in a systematical way
@@ -209,7 +211,10 @@ class Evaluate:
             if self.args.eva_method == 0:     # basic operation
                 pbounds = {'thres_seg': (0.4, 0.6), 'size_seg' : (500, 2000)}
             elif self.args.eva_method == 1 and self.args.output == 2:   # currently used version with classification
-                pbounds = {'thres_seg': (0.4, 0.6), 'size_seg' : (500, 2000), 'thres_oth':(0.25, 0.7), 'size_oth':(1000, 4000)}
+                if category >= 2:
+                    pbounds = {'thres_seg': (0.4, 0.6), 'size_seg' : (1000, 2000), 'thres_oth':(0.4, 0.7), 'size_oth':(1000, 4000)}
+                else:
+                    pbounds = {'thres_seg': (0.4, 0.6), 'size_seg' : (500, 1500), 'thres_oth':(0.4, 0.7), 'size_oth':(1000, 4000)}
             elif self.args.eva_method == 2 and self.args.output == 2:   # adding another thresholding after the conditions with zeros
                 pbounds = {'thres_seg': (0.4, 0.6), 'size_seg' : (500, 2000), 'thres_oth':(0.25, 0.7), 'size_oth':(1000, 4000), 'thres_after':(0.3, 0.5)}
             optimizer = BayesianOptimization(f = cal_dice, pbounds = pbounds, random_state = 1)   
@@ -263,8 +268,12 @@ class Evaluate:
                     outputs = torch.sigmoid(preds[0]).permute(0, 2, 3, 1).detach().cpu().numpy()[0,:,:,category]
                     output_label += preds[1].detach().cpu().numpy()[0,category]
                 elif self.args.output == 2: # classification
-                    outputs = torch.sigmoid(preds[0]).permute(0, 2, 3, 1).detach().cpu().numpy()[0,:,:,category]
-                    output_label += torch.sigmoid(preds[1]).detach().cpu().numpy()[0,category]
+                    if self.args.avg_test:
+                        outputs = preds[0].permute(0, 2, 3, 1).detach().cpu().numpy()[0,:,:,category]
+                        output_label += preds[1].detach().cpu().numpy()[0,category]
+                    else:
+                        outputs = torch.sigmoid(preds[0]).permute(0, 2, 3, 1).detach().cpu().numpy()[0,:,:,category]
+                        output_label += torch.sigmoid(preds[1]).detach().cpu().numpy()[0,category]
 
                 # flip the predicted results
                 if lr == 1: # flip the prediction from right to left
@@ -274,9 +283,10 @@ class Evaluate:
 
                 # merge the result
                 output_mask += outputs
-
-        return output_mask/self.flip_num/len(self.net), output_label/self.flip_num/len(self.net)
-
+        if self.args.avg_test:
+            return sigmoid(output_mask/self.flip_num/len(self.net)), sigmoid(output_label/self.flip_num/len(self.net))
+        else:
+            return output_mask/self.flip_num/len(self.net), output_label/self.flip_num/len(self.net)
 
     def predict_flip_batch(self, images):
         'Same as predict flip but deal with a batch of images'
@@ -305,8 +315,12 @@ class Evaluate:
                     masks = torch.sigmoid(preds[0])
                     labels = preds[1]
                 elif self.args.output == 2: # classification
-                    masks = torch.sigmoid(preds[0])
-                    labels = torch.sigmoid(preds[1])
+                    if self.args.avg_test:
+                        masks = preds[0]
+                        labels = preds[1]
+                    else:
+                        masks = torch.sigmoid(preds[0])
+                        labels = torch.sigmoid(preds[1])
   
                 # flip the predicted results
                 if lr == 1: # flip the prediction from right to left
@@ -317,8 +331,10 @@ class Evaluate:
                 # merge the result
                 self.output_mask += masks.permute(0, 2, 3, 1).detach().cpu().numpy()
                 self.output_label += labels.detach().cpu().numpy()
-
-        return self.output_mask/self.flip_num/len(self.net), self.output_label/self.flip_num/len(self.net)
+        if self.args.avg_test:
+            return sigmoid(self.output_mask/self.flip_num/len(self.net)), sigmoid(self.output_label/self.flip_num/len(self.net))
+        else:
+            return self.output_mask/self.flip_num/len(self.net), self.output_label/self.flip_num/len(self.net)
 
     
     def predict_dataloader(self, to_rle = False, fnames = None, gen_pseudo = True):
