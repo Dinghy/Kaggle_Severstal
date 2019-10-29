@@ -1,6 +1,15 @@
 # Severstal
 Scripts for Severstal Kaggle Competition
 
+Results.
+
+1. The script scores 47th on the public leading board
+2. The script scores 326th on the private leading board
+
+We suspect the shape or size the defects in steel has changed, but
+since the labels for the test images are not provided, it is not
+easy to verify this.
+
 ## Training phase
 1. Train a model in a script under FixCheck branch
 
